@@ -35,8 +35,7 @@
 
 #### define the file to be processed ####
 print("initialising analysis")
-#setwd("C:/Users/cubry/Documents/Riz_analysis/msmc/VCF chr recoded/")
-setwd("/scratch/cubry/vcf_recoded/")
+setwd("vcf_recoded/")
 for(i in 1:12){
 input <- paste("chr",i,".recode.vcf",sep="")
 output <- paste("chr",i,".recode.HAPLO.NEW.vcf",sep="")
@@ -90,8 +89,7 @@ write.table(vcf_init, file = output, append=TRUE, col.names = FALSE, row.names =
 #FOR GEOREFERENCED GENOTYPES ONLY
 #### define the file to be processed ####
 print("initialising analysis")
-setwd("C:/Users/cubry/Documents/Riz_analysis/msmc/VCF chr recoded/")
-#setwd("/scratch/cubry/vcf_recoded/")
+setwd("msmc/VCF chr recoded/")
 for(i in 1:12){
   input <- paste("chr",i,".barthii.recode.vcf",sep="")
   output <- paste("chr",i,".barthii.recode.HAPLO.NEW.vcf",sep="")
@@ -144,8 +142,7 @@ for(i in 1:12){
 #FOR BARTHII GENOTYPES WITHOUT ADVENTICES
 #### define the file to be processed ####
 print("initialising analysis")
-setwd("C:/Users/cubry/Documents/Riz_analysis/msmc/VCF chr recoded/")
-#setwd("/scratch/cubry/vcf_recoded/")
+setwd("msmc/VCF chr recoded/")
 for(i in 1:12){
   input <- paste("chr",i,".barthii.allwithtadv.recode.vcf",sep="")
   output <- paste("chr",i,".barthii.allwithtadv.recode.HAPLO.NEW.vcf",sep="")
@@ -195,13 +192,10 @@ for(i in 1:12){
 }
 
 
-
-
 #FOR ALL BARTHII GENOTYPES
 #### define the file to be processed ####
 print("initialising analysis")
-setwd("C:/Users/cubry/Documents/Riz_analysis/msmc/VCF chr recoded/")
-#setwd("/scratch/cubry/vcf_recoded/")
+setwd("msmc/VCF chr recoded/")
 for(i in 1:12){
   input <- paste("chr",i,".barthii.all.recode.vcf",sep="")
   output <- paste("chr",i,".barthii.all.recode.HAPLO.NEW.vcf",sep="")

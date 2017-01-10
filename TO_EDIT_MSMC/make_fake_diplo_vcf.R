@@ -34,7 +34,7 @@
 #######################################
 
 #### Sample 8 genotypes for msmc analysis, excluding eastern individuals and MN
-glab <- read.table("C:/Users/cubry/Documents/scripts/Riz/Riz/Riz_scripts_R/list-glab-georef.txt",header=TRUE,na.strings = "-")
+glab <- read.table("list-glab-georef.txt",header=TRUE,na.strings = "-")
 gen.list <- sample(glab$code_vcf[which(glab$code_vcf!="MN"&
                                         glab$code_vcf!="KC"&
                                         glab$code_vcf!="IK"&
@@ -47,7 +47,7 @@ diplos.list <- paste(gen.list[seq(1,length(gen.list),2)],gen.list[seq(2,length(g
 
 #### define the file to be processed ####
 for(c in 1:12){
-setwd("C:/Users/cubry/Documents/Riz_analysis/msmc/VCF chr recoded/")
+setwd("msmc/VCF chr recoded/")
 input <- paste("chr",c,".recode.HAPLO.NEW.vcf",sep="")
 output <- paste("chr",c,"_",sep="")
 
@@ -76,21 +76,21 @@ indiv <- head[10:length(head)]
 
 # #### Defining the couples of genotypes to be merge in a fake diploid ####
 # # from group 5
-# g5_EA_FP <- c("EA","FP") ; g5_FT_GC <- c("FT","GC") ; g5_GP_HE <- c("GP","HE")
-# g5_MI_NG <- c("MI","NG")
+ g5_EA_FP <- c("EA","FP") ; g5_FT_GC <- c("FT","GC") ; g5_GP_HE <- c("GP","HE")
+ g5_MI_NG <- c("MI","NG")
 # 
 # # from group 3
-# g3_EI_FI <- c("EI","FI") ; g3_FL_GK <- c("FL","GK") ; g3_GR_HF <- c("GR","HF")
-# g3_HM_KF <- c("HM","KF") ; g3_LA_MR <- c("LA","MR")
+ g3_EI_FI <- c("EI","FI") ; g3_FL_GK <- c("FL","GK") ; g3_GR_HF <- c("GR","HF")
+ g3_HM_KF <- c("HM","KF") ; g3_LA_MR <- c("LA","MR")
 # 
 # # from group 7
-# g7_EN_FC<- c("EN","FC") ; g7_FS_GB <- c("FS","GB") ; g7_HB_HC <- c("HB","HC")
-# g7_IM_IQ <- c("IM","IQ") ; g7_KM_LB <- c("KM","LB") ; g7_LR_MG <- c("LR","MG")
-# g7_MN_MP <- c("MN","MP")
+ g7_EN_FC<- c("EN","FC") ; g7_FS_GB <- c("FS","GB") ; g7_HB_HC <- c("HB","HC")
+ g7_IM_IQ <- c("IM","IQ") ; g7_KM_LB <- c("KM","LB") ; g7_LR_MG <- c("LR","MG")
+ g7_MN_MP <- c("MN","MP")
 # 
 # #### Defining the list of vcf to be created ####
-# list <- c("g5_EA_FP", "g5_FT_GC", "g5_GP_HE", "g5_MI_NG", "g3_EI_FI", "g3_FL_GK", "g3_GR_HF", "g3_HM_KF", "g3_LA_MR",
-# "g7_EN_FC", "g7_FS_GB", "g7_HB_HC", "g7_IM_IQ", "g7_KM_LB", "g7_LR_MG", "g7_MN_MP")
+ list <- c("g5_EA_FP", "g5_FT_GC", "g5_GP_HE", "g5_MI_NG", "g3_EI_FI", "g3_FL_GK", "g3_GR_HF", "g3_HM_KF", "g3_LA_MR",
+ "g7_EN_FC", "g7_FS_GB", "g7_HB_HC", "g7_IM_IQ", "g7_KM_LB", "g7_LR_MG", "g7_MN_MP")
 
 #### Making the diploidization with replacement rules ####
 for (i in 1:length(diplos.list)){
@@ -126,12 +126,6 @@ close(con.b)
 }
 
 }
-
-
-
-
-
-
 
 rm(list = ls())
 
