@@ -1,0 +1,10 @@
+The analysis will be made on whole genome, using the haploid VCF files generated for the msmc analysis (extraction of samples from the initial ones and haploidization of genotypes). We first concatenated all the chromosome VCF into one single VCF per species using the vcftools –concat procedure.
+Vcftools command line: vcf-concat [list of vcf files to concat]> out.vcf
+
+For LD computation:
+-	Keep MAF > 10%
+-	Limit to 1000kb
+-	Max 1000 comparisons (for each SNP tested)
+Vcftools command line: vcftools --vcf FILE --out OUTPUT PREFIX --maf 0.1 --hap-r2 --ld-window-bp 1000000 --ld-window 1000
+
+Now we will perform analysis in R using the scripts provided in this folder.
