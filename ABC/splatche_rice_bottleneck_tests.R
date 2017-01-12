@@ -220,25 +220,17 @@ plot_grid( prow, legend, rel_widths = c(3, .5))
 save_plot(filename = "/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/Posteriors_13groups_0001.pdf",plot_grid( prow, legend, rel_widths = c(3, .5)),base_height = 8,base_aspect_ratio = 2)
 
 
-```{r nn10pop_map4}
-# Repr?sentation des densit?s sur la carte
-
+# Plotting on the map
 
 map <- as.data.frame(nn10pop$adj.values[,1:2])
 maps <- plot_grid(posteriorposition_map(map,n=100,h=30))
 maps
-#maps_raster <- plot_grid(posteriorposition_map_raster(map,n=100,h=30))
-#ggsave("/Users/cubry/Desktop/map_b.png",maps_raster)
 
 long <- qplot(nn10pop$adj.values[,1],geom="histogram",binwidth=4,xlab = "Posterior of longitude")
 lat <- qplot(nn10pop$adj.values[,2],geom="histogram",binwidth=4,xlab = "Posterior of latitude")
-save_plot(filename = "/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/Histos_coords_13groups_0001.pdf",plot_grid( long,lat),base_height = 4,base_aspect_ratio = 2)
-
-```
 
 
-
-```{r read_newpriorsB_withoutEast, echo=FALSE}
+# read simulation sumarry statistics results for model with 12 groups
 param.moinsEstMR = rbind(
   read.table("~/Riz_analysis/splatche/riz_newpriorsB_1.moinsEst_MR_sum.stat.txt", header = T),
   read.table("~/Riz_analysis/splatche/riz_newpriorsB_2.moinsEst_MR_sum.stat.txt", header = T),
@@ -282,22 +274,19 @@ param.moinsEstMR = rbind(
  read.table("~/Riz_analysis/splatche/riz_newpriorsB_41.moinsEst_MR_sum.stat.txt", header = T)
   
  )
-
+# Reading corresponding empirical summary statistics
 stat.obs_moinsEst_MR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsEast_MR.txt",header = T)
-
+# Plotting simulated distributions of summary statistics with regard to empirical values
 boxplot(param.moinsEstMR[,(length(param.moinsEstMR)-23):(length(param.moinsEstMR)-5)],
         las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,1))
 axis(1, at= 1:19,c(paste("SFS",seq(1:7)),paste("RV",seq(1:12))), las=2)
 points(1:19,stat.obs_moinsEst_MR,pch=3,col="red")
 legend("topright","Obs",pch=3,col="red")
-```
-```{r nn11pop, include=FALSE}
 
-#nn11pop <- abc(target = stat.obs_moinsEst_MR[c(1:19)],sumstat = param.moinsEstMR[,c(13:31)],param = param.moinsEstMR[,c(1:9,11)],method = "neuralnet",tol = 0.001,numnet = 500)
-#save(nn11pop,file ="/Users/cubry/Documents/Riz_analysis/splatche/nn11pop")
-load('/Users/cubry/Documents/Riz_analysis/splatche/nn11pop')
-```
-```{r nn11pop_posts, echo=FALSE}
+# Perform ABC
+nn11pop <- abc(target = stat.obs_moinsEst_MR[c(1:19)],sumstat = param.moinsEstMR[,c(13:31)],param = param.moinsEstMR[,c(1:9,11)],method = "neuralnet",tol = 0.001,numnet = 500)
+
+# Plotting posterior distributions
 long <- densities_plot(param.moinsEstMR$Long1,nn11pop$adj.values[,"Long1"],title = "Longitude")
 lat <- densities_plot(param.moinsEstMR$Lat1,nn11pop$adj.values[,"Lat1"],title = "Latitude")
 gen <- densities_plot(param.moinsEstMR$generations,nn11pop$adj.values[,"generations"],title = "Exp_length")
@@ -324,145 +313,11 @@ grobs <- ggplotGrob(lat)$grobs
 legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]]
 plot_grid( prow, legend, rel_widths = c(3, .5))
 
-save_plot(filename = "/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/Posteriors_12groups_0001.pdf",plot_grid( prow, legend, rel_widths = c(3, .5)),base_height = 8,base_aspect_ratio = 2)
-
-
-```
-
-```{r nn11pop_map5}
-# Repr?sentation des densit?s sur la carte
-
+# Representation on the map
 
 map <- as.data.frame(nn11pop$adj.values[,1:2])
-
-
-
 maps <- plot_grid(posteriorposition_map(map,n=100,h=30))
 maps
-#maps_raster <- plot_grid(posteriorposition_map_raster(map,n=100,h=30))
-#ggsave("/Users/cubry/Desktop/map_withtEast.png",maps_raster)
 
 long <- qplot(nn11pop$adj.values[,1],geom="histogram",binwidth=4,xlab = "Posterior of longitude")
 lat <- qplot(nn11pop$adj.values[,2],geom="histogram",binwidth=4,xlab = "Posterior of latitude")
-save_plot(filename = "/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/Histos_coords_12groups_0001.pdf",plot_grid( long,lat),base_height = 4,base_aspect_ratio = 2)
-
-```
-
-
-
-```{r validation 12 groups, include=FALSE}
-# Choosing a simulation from each of the three possible regions for african rice domestication, only ran once !!!
-
-# senegal <- which(param.moinsEstMR$Long1< -14 & param.moinsEstMR$Long1> -17 & param.moinsEstMR$Lat1 >11 & param.moinsEstMR$Lat1 <16)
-#  senegal_position <- sample(senegal,size = 1)
-#  while(length(which(is.na(param.moinsEstMR[senegal_position,])))!=0){
-#    senegal_position <- sample(senegal,size = 1)
-#  }
-# 
-# stat.obs_simul_west <- param.moinsEstMR[senegal_position,]
-#write.table(stat.obs_simul_west,"/Users/cubry/Documents/Riz_analysis/splatche/simul_west_retained_12grps")
-stat.obs_simul_west <-read.table("/Users/cubry/Documents/Riz_analysis/splatche/simul_west_retained_12grps")
-
-
-# chad <- which(param.moinsEstMR$Long1>13 & param.moinsEstMR$Long1<15 & param.moinsEstMR$Lat1 >13 & param.moinsEstMR$Lat1 <15)
-# chad_position <- sample(chad,size = 1)
-# while(length(which(is.na(param.moinsEstMR[chad_position,])))!=0){
-#   chad_position <- sample(chad,size = 1)
-# }
-#stat.obs_simul_east <- param.moinsEstMR[chad_position,]
-#write.table(stat.obs_simul_east,"/Users/cubry/Documents/Riz_analysis/splatche/simul_east_retained_12grps")
-stat.obs_simul_east <-read.table("/Users/cubry/Documents/Riz_analysis/splatche/simul_east_retained_12grps")
-
-# mali <- which(param.moinsEstMR$Long1> -3 & param.moinsEstMR$Long1< -1 & param.moinsEstMR$Lat1 >16 & param.moinsEstMR$Lat1 <18)
-# mali_position <- sample(mali,size = 1)
-# while(length(which(is.na(param.moinsEstMR[mali_position,])))!=0){
-#   mali_position <- sample(mali,size = 1)
-# }
-#stat.obs_simul_central <- param.moinsEstMR[mali_position,]
-#write.table(stat.obs_simul_central,"/Users/cubry/Documents/Riz_analysis/splatche/simul_central_retained_12grps")
-stat.obs_simul_central <- read.table("/Users/cubry/Documents/Riz_analysis/splatche/simul_central_retained_12grps")
-
-
-nnpop.simul_west <- abc(target = stat.obs_simul_west[13:31],sumstat = param.moinsEstMR[,c(13:31)],param = param.moinsEstMR[,c(1:9,11)],method = "neuralnet",tol = 0.001,numnet = 50)
-map <- as.data.frame(nnpop.simul_west$adj.values[,1:2])
-maps <- plot_grid(posteriorposition_map(map,n=100,h=30)+geom_point(aes(x= stat.obs_simul_west$Long1,y=stat.obs_simul_west$Lat1)))
-maps
-ggsave("/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/map_simul_west.png",maps)
-
-nnpop.simul_central <- abc(target = stat.obs_simul_central[13:31],sumstat = param.moinsEstMR[,c(13:31)],param = param.moinsEstMR[,c(1:9,11)],method = "neuralnet",tol = 0.001,numnet = 50)
-map <- as.data.frame(nnpop.simul_central$adj.values[,1:2])
-maps <- plot_grid(posteriorposition_map(map,n=100,h=30)+geom_point(aes(x= stat.obs_simul_central$Long1,y=stat.obs_simul_central$Lat1)))
-maps
-ggsave("/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/map_simul_central.png",maps)
-
-nnpop.simul_east <- abc(target = stat.obs_simul_east[13:31],sumstat = param.moinsEstMR[,c(13:31)],param = param.moinsEstMR[,c(1:9,11)],method = "neuralnet",tol = 0.001,numnet = 50)
-map <- as.data.frame(nnpop.simul_east$adj.values[,1:2])
-maps <- plot_grid(posteriorposition_map(map,n=100,h=30)+geom_point(aes(x= stat.obs_simul_east$Long1,y=stat.obs_simul_east$Lat1)))
-maps
-ggsave("/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/map_simul_east.png",maps)
-```
-
-```{r read_ppc_12groups, echo=FALSE}
-param.PPC_12groups = rbind(
-  read.table("~/Riz_analysis/splatche/ppc_riz_12_post.moinsEst_MR_sum.stat.txt", header = T),
-  read.table("~/Riz_analysis/splatche/ppc_riz_12_post_2.moinsEst_MR_sum.stat.txt", header = T)
-  )
-
-stat.obs_moinsEst_MR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsEast_MR.txt",header = T)
-
-param.PPC_12groups.reshape <- reshape2::melt(param.PPC_12groups[,13:31])
-
-
-ppc_12_groups <- qplot(data=param.PPC_12groups.reshape[-which(param.PPC_12groups.reshape[,"value"]==0|param.PPC_12groups.reshape[,"value"]>0.9),],
-      x=variable,y=value,
-      geom="violin") + geom_point(data = reshape2::melt(stat.obs_moinsEst_MR),aes(x=variable, y=value))+ geom_point(data = reshape2::melt(stat.obs_moinsEst_MR),aes(x=variable, y=value),col="red")+ theme(axis.text.x = element_text(angle = 90, hjust = 1))+ylab("Distributions of summary statistics")
-
-# boxplot(param.PPC_12groups[,13:31],
-#         las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,1))
-# axis(1, at= 1:19,c(paste("SFS",seq(1:7)),paste("RV",seq(1:12))), las=2)
-# points(1:19,stat.obs_moinsEst_MR,pch=3,col="red")
-# legend("topright","Obs",pch=3,col="red")
-
-ppc_12_ci <- apply(X = param.PPC_12groups[,13:31],MARGIN = 2,FUN=function(x){
-  y <- x[x>0]
-  y <- y[y<0.9]
-  c(quantile(y,probs = c(0.001315789,1-0.001315789),na.rm=TRUE))
-})
-ppc_12_ci <- rbind(stat.obs_moinsEst_MR,ppc_12_ci)
-
-row.names(ppc_12_ci) <- c("obs. value","lower 95% c.i. boundary, Bonferroni corrected","upper 95% c.i. boundary, Bonferroni corrected")
-write.table(t(ppc_12_ci),"/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/PPC_12_CI.txt",quote=FALSE)
-ggsave("/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/PPC_12_groups.png",ppc_12_groups)
-```
-
-```{r read_ppc_13groups, echo=FALSE}
-param.PPC_13groups = rbind(
-  read.table("~/Riz_analysis/splatche/ppc_riz_13_post_.moinsMR_sum.stat.txt", header = T)
-  )
-
-stat.obs_moinsMR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsMR.txt",header = T)
-
-param.PPC_13groups.reshape <- reshape2::melt(param.PPC_13groups[,13:32])
-
-
-ppc_13_groups <- qplot(data=param.PPC_13groups.reshape[-which(param.PPC_13groups.reshape[,"value"]==0|param.PPC_13groups.reshape[,"value"]>0.9),],
-      x=variable,y=value,
-      geom="violin") + geom_point(data = reshape2::melt(stat.obs_moinsMR),aes(x=variable, y=value))+ geom_point(data = reshape2::melt(stat.obs_moinsMR),aes(x=variable, y=value),col="red")+ theme(axis.text.x = element_text(angle = 90, hjust = 1))+ylab("Distributions of summary statistics")
-
-# boxplot(param.PPC_13groups[,13:32],
-#         las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,1))
-# axis(1, at= 1:20,c(paste("SFS",seq(1:7)),paste("RV",seq(1:13))), las=2)
-# points(1:20,stat.obs_moinsMR,pch=3,col="red")
-# legend("topright","Obs",pch=3,col="red")
-
-ppc_13_ci <- apply(X = param.PPC_13groups[,13:32],MARGIN = 2,FUN=function(x){
-  y <- x[x>0]
-  y <- y[y<0.9]
-  c(quantile(y,probs = c(0.00125,1-0.00125),na.rm=TRUE))
-})
-ppc_13_ci <- rbind(stat.obs_moinsMR,ppc_13_ci)
-
-row.names(ppc_13_ci) <- c("obs. value","lower 95% c.i. boundary, Bonferroni corrected","upper 95% c.i. boundary, Bonferroni corrected")
-write.table(t(ppc_13_ci),"/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/PPC_13_CI.txt",quote=FALSE)
-ggsave("/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/PPC_13_groups.png",ppc_13_groups)
-```
