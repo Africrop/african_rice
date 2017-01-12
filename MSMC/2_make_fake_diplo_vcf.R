@@ -33,9 +33,9 @@
 # one fake diploid in a new VCF file  #
 #######################################
 
-#### Sample 8 genotypes for msmc analysis, excluding eastern individuals and MN
+#### Sample 8 genotypes for msmc analysis, excluding eastern individuals and MR
 glab <- read.table("list-glab-georef.txt",header=TRUE,na.strings = "-")
-gen.list <- sample(glab$code_vcf[which(glab$code_vcf!="MN"&
+gen.list <- sample(glab$code_vcf[which(glab$code_vcf!="MR"&
                                         glab$code_vcf!="KC"&
                                         glab$code_vcf!="IK"&
                                         glab$code_vcf!="EK"&
@@ -81,7 +81,7 @@ indiv <- head[10:length(head)]
 # 
 # # from group 3
  g3_EI_FI <- c("EI","FI") ; g3_FL_GK <- c("FL","GK") ; g3_GR_HF <- c("GR","HF")
- g3_HM_KF <- c("HM","KF") ; g3_LA_MR <- c("LA","MR")
+ g3_HM_KF <- c("HM","KF") ; g3_LA_MN <- c("LA","MN")
 # 
 # # from group 7
  g7_EN_FC<- c("EN","FC") ; g7_FS_GB <- c("FS","GB") ; g7_HB_HC <- c("HB","HC")
@@ -89,7 +89,7 @@ indiv <- head[10:length(head)]
  g7_MN_MP <- c("MN","MP")
 # 
 # #### Defining the list of vcf to be created ####
- list <- c("g5_EA_FP", "g5_FT_GC", "g5_GP_HE", "g5_MI_NG", "g3_EI_FI", "g3_FL_GK", "g3_GR_HF", "g3_HM_KF", "g3_LA_MR",
+ list <- c("g5_EA_FP", "g5_FT_GC", "g5_GP_HE", "g5_MI_NG", "g3_EI_FI", "g3_FL_GK", "g3_GR_HF", "g3_HM_KF", "g3_LA_MN",
  "g7_EN_FC", "g7_FS_GB", "g7_HB_HC", "g7_IM_IQ", "g7_KM_LB", "g7_LR_MG", "g7_MN_MP")
 
 #### Making the diploidization with replacement rules ####
@@ -131,7 +131,7 @@ rm(list = ls())
 
 #### Making the same for barthii
 
-#### Sample 8 genotypes for msmc analysis, excluding eastern individuals and MN
+#### Sample 16 genotypes for msmc analysis
 barth <- read.table("C:/Users/cubry/Documents/scripts/Riz/Riz/Riz_scripts_R/list-barth-georef.txt",header=TRUE,na.strings = "-")
 gen.list <- sample(barth$code_vcf,16)
 
@@ -168,7 +168,6 @@ for(c in 1:12){
   colnames(vcf_haplo) <- head
   indiv <- head[10:length(head)]
   
-
   #### Making the diploidization with replacement rules ####
   for (i in 1:length(diplos.list)){
     # Gather ind data
@@ -203,9 +202,6 @@ for(c in 1:12){
   }
   
 }
-
-
-
 
 
 #### Computing fake diploids for barthii groups - ordered genotypes within groups ####
@@ -253,7 +249,6 @@ for(c in 1:12){
   vcf_haplo <- read.table(file = input, header = FALSE,comment.char = "#",colClasses =  "character")
   colnames(vcf_haplo) <- head
   indiv <- head[10:length(head)]
-  
   
   #### Making the diploidization with replacement rules ####
   for (i in 1:length(diplos.list)){
@@ -305,7 +300,6 @@ for(g in 1:5){
   for(i in seq(1,(nrow(barth)%/%2*2),2)){
     gen.list <- rbind(gen.list,paste(barth[i,],"_",barth[i+1,],sep=""))
   }
-  
   
   #### Make a list of fake diplos to be created
   diplos.list <- gen.list

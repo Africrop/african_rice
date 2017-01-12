@@ -1,0 +1,2 @@
+The first script (1_make_haplo_vcf.R) is used to produce haploid VCF from regular diploid VCF.
+The second one (2_make_fake_diplo_vcf.R) can be used to produce fake-diploids VCF for use with, e.g. MSMC.
