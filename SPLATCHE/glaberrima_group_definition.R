@@ -27,9 +27,6 @@
 #
 ###################################################################################################################################
 
-title: "Defining groups for summary statistics computation on _Oriza glaberrima_"
-author: "Philippe Cubry"
-
 # Defining groups of genotypes for the computation of summary statistics to be used for spatial modelisation
 
 ## Loading required packages and datasets

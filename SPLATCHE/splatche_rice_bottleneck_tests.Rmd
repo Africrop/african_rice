@@ -1,0 +1,1531 @@
+---
+title: "splatche rice bottleneck tests"
+author: "Philippe Cubry"
+date: "10 juin 2016"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r load libraries and others, include=FALSE}
+library(abc)
+library(ggplot2)
+library(raster)
+library(rgdal)
+library(cowplot)
+estimate_mode <- function(x) {
+  d <- density(x)
+  d$x[which.max(d$y)]
+}
+nat.earth <- stack('/Users/cubry/Documents/GIS/naturalearth/HYP_50M_SR_W.tif')
+lakes <- readOGR("/Users/cubry/Documents/GIS/naturalearth",layer = "ne_10m_lakes")
+rivers <- readOGR("/Users/cubry/Documents/GIS/naturalearth",layer = "ne_50m_rivers_lake_centerlines")
+playas <- readOGR("/Users/cubry/Documents/GIS/naturalearth",layer = "ne_50m_playas")
+ocean <- readOGR("/Users/cubry/Documents/GIS/naturalearth",layer = "ne_10m_ocean")
+shapefile <- readOGR("/Users/cubry/Documents/GIS/naturalearth",layer = "ne_50m_admin_0_countries")
+data <- fortify(shapefile)
+data.lakes <- fortify(lakes)
+data.playas <- fortify(playas)
+data.ocean <- fortify(ocean)
+data.rivers <- fortify(rivers)
+
+extent <- c(-25,57,-5,40)
+nat.crop <- crop(nat.earth, y=extent(extent))
+rast.table <- data.frame(xyFromCell(nat.crop, 1:ncell(nat.crop)),
+                         getValues(nat.crop/255))
+rast.table$rgb <- with(rast.table, rgb(HYP_50M_SR_W.1,
+                                       HYP_50M_SR_W.2,
+                                       HYP_50M_SR_W.3,
+                                      1))
+
+rm(nat.earth,nat.crop)
+```
+
+```{r functions_def, include=FALSE}
+densities_plot <- function(prior = prior, post = post, title = "") {ggplot()  +
+            #Plot the density graphs
+            geom_density(aes(prior,fill="priors"),alpha=0.5) +
+            geom_density(aes(post,fill="posteriors"),alpha=0.5) +
+            #guide
+            scale_fill_manual(values=c('#E69F00','#999999')) +
+            #labels
+            labs(title= title,x="") +
+            #Define the theme  
+            #theme_bw() +
+            theme(panel.grid=element_blank(),legend.title=element_blank())
+}
+
+posteriorposition_map <- function(posteriorposition = posteriorposition,title="",n=50,h=25) {
+  ggplot()+  
+    geom_polygon(aes(x = long, y = lat, group = group),
+                 fill="lightblue", data = data.ocean, size = .3) +
+    geom_polygon(aes(x = long, y = lat, group = group), data = data,
+                 colour ='antiquewhite4', fill = "white", size = .3) +
+    geom_polygon(aes(x = long, y = lat, group = group), data = data.lakes,
+                 colour ='lightblue',fill="lightblue", size = .3) +
+    stat_density2d(data = posteriorposition,
+                   aes(x=Long1,y=Lat1,  fill = ..level.., alpha = ..level..),
+                   size = 0.1, geom = 'polygon',n = n,h=h) +
+     geom_path(aes(x = long, y = lat, group = group), data = data.rivers,
+                 colour ='lightblue') +
+    scale_fill_gradient(low = "yellow", high = "red", guide = FALSE) +
+    scale_alpha(range = c(0, 0.25), guide = FALSE) +
+    ggtitle(title) +
+    theme_bw() +
+    theme(axis.line = element_blank(),
+          axis.title = element_blank(),
+          legend.key = element_blank(),
+          panel.border = element_rect(colour = "black",
+                                      size = .5,
+                                      linetype = "solid"
+          )
+    ) + coord_quickmap(xlim = c(-20,50),ylim =c(-0,35))
+}
+
+
+posteriorposition_map_raster <- function(posteriorposition = posteriorposition,title="",n=50,h=25) {
+  ggplot(data=rast.table,aes(x=x,y=y))+
+    geom_tile(fill= rast.table$rgb)+
+    geom_polygon(aes(x = long, y = lat, group = group), data = data,
+                 colour ='antiquewhite4', fill = "NA", size = .3) +
+    geom_polygon(aes(x = long, y = lat, group = group), data = data.lakes,
+                 colour ='lightblue',fill="lightblue", size = .3) +
+    stat_density2d(data = posteriorposition,
+                   aes(x=Long1,y=Lat1,  fill = ..level.., alpha = ..level..),
+                   size = 0.1, geom = 'polygon',n = n,h=h) +
+    scale_fill_gradient(low = "green", high = "red",guide=FALSE) +
+    scale_alpha(range = c(0.00, 0.25), guide = FALSE) +
+    geom_point(aes(x=-4.540278,y=13.890556),size=1)+
+    geom_path(aes(x = long, y = lat, group = group), data = data.rivers,
+                 colour ='lightblue') +
+    ggtitle(title) +
+    theme_bw() +
+    theme(axis.line = element_blank(),
+          axis.title = element_blank(),
+          legend.key = element_blank(),
+          panel.border = element_rect(colour = "black",
+                                      size = .5,
+                                      linetype = "solid"
+          )
+    ) + coord_quickmap(xlim = c(-20,50),ylim =c(-0,35))
+}
+```
+
+<!-- #Intro -->
+<!-- This is a first attempt to modelize origin of domestication for the african rice. -->
+<!-- We set up Splatche simulations as for the pearl millet analizes. -->
+<!-- Variable parameters were the migration rate, the growth rate, number of generations of the expansion, latitude and longitude of the origin. -->
+<!-- We used as summary statistics the binned SFS and rare variants statistics for grouped genotypes. -->
+
+<!-- #Simulation vs observed data -->
+<!-- We first see how the simulations performed with regards to observed data. -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- param = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test1_1sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test1_2sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test1_3sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test1_4sum.stat.txt", header = T) -->
+<!--   ) -->
+
+<!-- param_moinsMR = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test1_1.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test1_2.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test1_3.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test1_4.moinsMR_sum.stat.txt", header = T) -->
+<!--   ) -->
+
+<!-- stat.obs = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs.txt",header = T) -->
+<!-- stat.obs_moinsMR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsMR.txt",header = T) -->
+<!-- boxplot(param[, -->
+<!--                   (length(param)-19):(length(param))], -->
+<!--         las=2, main = "Simulated vs Observed sum stat, initial tests",xaxt="n") -->
+<!-- axis(1, at= 1:20,c(paste("SFS",seq(1:7)),paste("RV",seq(1:13))), las=2) -->
+<!-- points(1:20,stat.obs,pch=3,col="red") -->
+<!-- points(1:20,stat.obs_moinsMR,pch=3,col="blue") -->
+<!-- legend("topright",c("Whole sample", "Moins MR"),pch=3,col=c("red","blue")) -->
+<!-- ``` -->
+<!-- Red crosses are observed data based on the whole sample, blue ones exclude one odd individual that exhibited an high excess of rare variants. -->
+<!-- Rare variants statistics appeared not so badly simulated, except a slight tendancy to underestimates group 1 and 5, whereas overestimating a bit group 7. In contrast, we failed at simulating the SFS, with a deficit in intermediate frequencies variants and an excess of pretty rare ones in the simulated datasets (with the noticeable exception of the first class). -->
+<!-- These results tend to indicate that we might fail at reconstructing the demographic history, perhaps with a lack of genetic drift during the expansion or because of a to small initial bottleneck. Putative ways to improve the simulations include a resizing at the onset of the expansion to simulate the initial bottleneck, as well as a recent collapse in carrying capacities as what is suggested when considering the stairway plot. -->
+
+<!-- #ABC estimations -->
+<!-- We performed an initial ABC investigation of the data. -->
+<!-- First we tryed to estimate all the parameters together using all summary statistics, using a tolerance rate of 0.1. This was done both with and without the odd individual. -->
+
+<!-- ```{r, include=FALSE} -->
+
+<!-- nn1pop <- abc(target = stat.obs,sumstat = param[,9:28],param = param[,c(1:5)],method = "neuralnet",tol = 0.05,numnet = 50) -->
+<!-- nn1pop_moinsMR <- abc(target = stat.obs_moinsMR,sumstat = param_moinsMR[,9:28],param = param_moinsMR[,c(1:5)],method = "neuralnet",tol = 0.05,numnet = 50) -->
+<!-- ``` -->
+
+<!-- - First including all individuals. -->
+
+
+<!-- ```{r, echo=FALSE} -->
+<!-- long <- densities_plot(param$Long1,nn1pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn1pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn1pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn1pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn1pop$adj.values[,"migration"],title = "migration") -->
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none")) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+<!-- ``` -->
+
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_initial.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+<!-- - Then removing the individual exhibiting a high excess of rare variants. -->
+
+
+<!-- ```{r, echo=FALSE} -->
+<!-- long.b <- densities_plot(param_moinsMR$Long1,nn1pop_moinsMR$adj.values[,"Long1"],title = "Longitude moins MR") -->
+<!-- lat.b <- densities_plot(param_moinsMR$Lat1,nn1pop_moinsMR$adj.values[,"Lat1"],title = "Latitude moins MR") -->
+<!-- gen.b <- densities_plot(param_moinsMR$generations,nn1pop_moinsMR$adj.values[,"generations"],title = "generations moins MR") -->
+<!-- acc.b <- densities_plot(param_moinsMR$accroissement,nn1pop_moinsMR$adj.values[,"accroissement"],title = "accroissement moins MR") -->
+<!-- mig.b <- densities_plot(param_moinsMR$migration,nn1pop_moinsMR$adj.values[,"migration"],title = "migration moins MR") -->
+<!-- prow<-plot_grid(lat.b + theme(legend.position="none"), -->
+<!--                 long.b + theme(legend.position="none"), -->
+<!--                 gen.b + theme(legend.position="none"), -->
+<!--                 mig.b + theme(legend.position="none"), -->
+<!--                 acc.b + theme(legend.position="none")) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_initial_moinsMR.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+<!-- It seems like there might be both an underestimation of the initial diversity and a lack of drift during the expansion. Considering only the rare variants and not the SFS gave the following plots. -->
+
+<!-- ```{r, include=FALSE} -->
+
+<!-- nn1pop <- abc(target = stat.obs[,c(8:20)],sumstat = param[,16:28],param = param[,c(1:5)],method = "neuralnet",tol = 0.1,numnet = 50) -->
+<!-- nn1pop_moinsMR <- abc(target = stat.obs_moinsMR[,8:20],sumstat = param_moinsMR[,16:28],param = param_moinsMR[,c(1:5)],method = "neuralnet",tol = 0.1,numnet = 50) -->
+<!-- ``` -->
+
+<!-- - For all individuals: -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- long <- densities_plot(param$Long1,nn1pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn1pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn1pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn1pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn1pop$adj.values[,"migration"],title = "migration") -->
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none")) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_initial_onlyRareVar.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+<!-- - Removing the one with excess of rare variants -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- long.b <- densities_plot(param_moinsMR$Long1,nn1pop_moinsMR$adj.values[,"Long1"],title = "Longitude moins MR") -->
+<!-- lat.b <- densities_plot(param_moinsMR$Lat1,nn1pop_moinsMR$adj.values[,"Lat1"],title = "Latitude moins MR") -->
+<!-- gen.b <- densities_plot(param_moinsMR$generations,nn1pop_moinsMR$adj.values[,"generations"],title = "generations moins MR") -->
+<!-- acc.b <- densities_plot(param_moinsMR$accroissement,nn1pop_moinsMR$adj.values[,"accroissement"],title = "accroissement moins MR") -->
+<!-- mig.b <- densities_plot(param_moinsMR$migration,nn1pop_moinsMR$adj.values[,"migration"],title = "migration moins MR") -->
+<!-- prow<-plot_grid(lat.b + theme(legend.position="none"), -->
+<!--                 long.b + theme(legend.position="none"), -->
+<!--                 gen.b + theme(legend.position="none"), -->
+<!--                 mig.b + theme(legend.position="none"), -->
+<!--                 acc.b + theme(legend.position="none")) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_initial_moinsMR_onlyRareVar.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+<!-- Suggestions for improving the analysis: -->
+<!-- * redo the analysis without the easternmost genotypes (group 13) -->
+<!-- * implement a resizing parameter prior to the expansion (in order to simulate the initial bottleneck) -->
+<!-- * reduce by twice all the carrying capacities in order to increase genetic drift -->
+<!-- * implement a recent crash on carrying capacities based on the results of the stairway plot analyses (a reduction of magnitude two 250 generations backward) -->
+
+
+<!-- ## Implementing the initial bottleneck -->
+
+<!-- The following simulations (rice_test3) are made implementing a bottleneck. Here we let the origin, number of generations, growth and migration rates, resizing before expansion, length of bottleneck, resizing before bottleneck vary. We analyzed the simulated datasets with or without the odd and the eastern genotypes. -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- param = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test3_1sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test3_2sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test3_3sum.stat.txt", header = T)) -->
+
+<!-- stat.obs = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs.txt",header = T) -->
+<!-- stat.obs_moinsMR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsMR.txt",header = T) -->
+
+<!-- sfs <- apply(param[,10:16],MARGIN = 1,FUN = function(x) {x/sum(x)}) -->
+<!-- param[,10:16] <- t(sfs) -->
+
+<!-- boxplot(param[, -->
+<!--                   (length(param)-19):(length(param))], -->
+<!--         las=2, main = "Simulated vs Observed sum stat, with initial bottleneck",xaxt="n", ylim=c(0,0.5)) -->
+<!-- axis(1, at= 1:20,c(paste("SFS",seq(1:7)),paste("RV",seq(1:13))), las=2) -->
+<!-- points(1:20,stat.obs,pch=3,col="red") -->
+<!-- points(1:20,stat.obs_moinsMR,pch=3,col="blue") -->
+<!-- legend("topright",c("Whole sample", "Moins MR"),pch=3,col=c("red","blue")) -->
+<!-- ``` -->
+
+<!-- ## Implementing recent crash in effective size -->
+
+<!-- We then tried to implement a recent crash in population effective size by halfing the carrying capacities of all demes at a very recent time (i.e. 500 generations ago). We'll try to use the stairwayplot analyze to implement the same demographic history, i.e. a long domestication bottleneck (6000 BP - 2500 BP) followed by an initial explosive expansion (2500 -2000 BP), a stabilization and a last bottleneck event around 500 BP. We modified the mutation rate accordingly to cope with those parameters. -->
+<!-- The parameters prior distribution were set as follow : -->
+<!-- * Carrying capacity 1 equal to those used for pearl millet -->
+<!-- * Carrying capacity 2 half the value as compared to the initial one, set to vary 2000 generations after the onset of expansion -->
+<!-- * Mutation rate set to 1.5e-6 -->
+<!-- * Onset of expansion from 2000 to 4000, uniform -->
+<!-- * Duration of bottleneck from 500 to 3000, uniform -->
+<!-- * Resize prior expansion 100 to 2000 -->
+<!-- * Resize before bottleneck 100 to 100000, uniform -->
+<!-- * Growth and mig rates from 0.05 to 0.5 -->
+<!-- * Origin in the Sahel -->
+<!-- We'll name these simulations "rice_test4". -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- param = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test4_1sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test4_2sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test4_3sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test4_4sum.stat.txt", header = T)) -->
+
+<!-- stat.obs = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs.txt",header = T) -->
+<!-- stat.obs_moinsMR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsMR.txt",header = T) -->
+
+<!-- sfs <- apply(param[,10:16],MARGIN = 1,FUN = function(x) {x/sum(x)}) -->
+<!-- param[,10:16] <- t(sfs) -->
+
+<!-- boxplot(param[, -->
+<!--                   (length(param)-19):(length(param))], -->
+<!--         las=2, main = "Simulated vs Observed sum stat, initial bottleneck\n and recent crash",xaxt="n", ylim=c(0,0.5)) -->
+<!-- axis(1, at= 1:20,c(paste("SFS",seq(1:7)),paste("RV",seq(1:13))), las=2) -->
+<!-- points(1:20,stat.obs,pch=3,col="red") -->
+<!-- points(1:20,stat.obs_moinsMR,pch=3,col="blue") -->
+<!-- legend("topright",c("Whole sample", "Moins MR"),pch=3,col=c("red","blue")) -->
+<!-- ``` -->
+<!-- The SFS appears to be better fitted, while no dramatic changes are seen regarding the rare variants. We'll now plot the simulated data without MR. -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- param = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test4_1.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test4_2.moinsMR_sum.stat.txt", header = T), -->
+<!--   #read.table("~/Riz_analysis/splatche/rice_test4_3.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test4_4.moinsMR_sum.stat.txt", header = T)  ) -->
+
+<!-- stat.obs = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs.txt",header = T) -->
+<!-- stat.obs_moinsMR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsMR.txt",header = T) -->
+<!-- stat.obs_moinsEast_MR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsEast_MR.txt",header = T) -->
+
+<!-- sfs <- apply(param[,10:16],MARGIN = 1,FUN = function(x) {x/sum(x)}) -->
+<!-- param[,10:16] <- t(sfs) -->
+
+<!-- boxplot(param[, -->
+<!--                   (length(param)-19):(length(param))], -->
+<!--         las=2, main = "Simulated vs Observed sum stat, initial bottleneck\n and recent crash less MR",xaxt="n", ylim=c(0,0.5)) -->
+<!-- axis(1, at= 1:20,c(paste("SFS",seq(1:7)),paste("RV",seq(1:13))), las=2) -->
+<!-- points(1:20,stat.obs,pch=3,col="red") -->
+<!-- points(1:20,stat.obs_moinsMR,pch=3,col="blue") -->
+<!-- legend("topright",c("Whole sample", "Moins MR"),pch=3,col=c("red","blue")) -->
+<!-- ``` -->
+<!-- No clear difference here. Next step will be to plot the simulated data without the eastern group and without MR. -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- param = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test4_1.moinsEst.sum.stat.txt", header = T), -->
+<!--   #read.table("~/Riz_analysis/splatche/rice_test4_2.moinsEst.sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test4_3.moinsEst.sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test4_4.moinsEst.sum.stat.txt", header = T)  ) -->
+
+<!-- stat.obs = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs.txt",header = T) -->
+<!-- stat.obs_moinsMR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsMR.txt",header = T) -->
+
+<!-- sfs <- apply(param[,10:16],MARGIN = 1,FUN = function(x) {x/sum(x)}) -->
+<!-- param[,10:16] <- t(sfs) -->
+
+<!-- boxplot(param[,(length(param)-18):(length(param))], -->
+<!--         las=2, main = "Simulated vs Observed sum stat, initial bottleneck\n and recent crash less MR and East",xaxt="n", ylim=c(0,0.5)) -->
+<!-- axis(1, at= 1:19,c(paste("SFS",seq(1:7)),paste("RV",seq(1:12))), las=2) -->
+<!-- points(1:19,stat.obs_moinsEast_MR,pch=3,col="red") -->
+<!-- legend("topright","Without East and MR",pch=3,col="red") -->
+<!-- ``` -->
+<!-- It appears to be better. All observed SFS bins are now in the simulated data. There is still some problems with Rare Variants groups. We'll now try to allow the time of recent collapse in Ne to vary. -->
+<!-- For this we'll use the same parameters as above, except for: -->
+<!-- - Onset of expansion between 1000 and 4000 generations -->
+<!-- - Time in generations after which the pop collapse between 0 and 3000 generations -->
+<!-- We add a condition of TrecentBott </= generations -->
+<!-- We plot only the data for the western populations. -->
+<!-- ```{r, echo=FALSE} -->
+<!-- param = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test5-1.moinEst.sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test5-2.moinEst.sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test5-3.moinEst.sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test5-4.moinEst.sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_test5-5.moinEst.sum.stat.txt", header = T)  ) -->
+
+<!-- stat.obs_moinsEast_MR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsEast_MR.txt",header = T) -->
+
+<!-- sfs <- apply(param[,11:17],MARGIN = 1,FUN = function(x) {x/sum(x)}) -->
+<!-- param[,11:17] <- t(sfs) -->
+
+<!-- boxplot(param[, -->
+<!--                   (length(param)-18):(length(param))], -->
+<!--         las=2, main = "Simulated vs Observed sum stat, initial bottleneck\n and varying time for recent crash less East",xaxt="n", ylim=c(0,0.5)) -->
+<!-- axis(1, at= 1:19,c(paste("SFS",seq(1:7)),paste("RV",seq(1:12))), las=2) -->
+<!-- points(1:19,stat.obs_moinsEast_MR,pch=3,col="blue") -->
+<!-- legend("topright",c("without East"),pch=3,col=c("red","blue")) -->
+<!-- ``` -->
+
+<!-- ```{r, include=FALSE} -->
+<!-- nn2pop <- abc(target = stat.obs_moinsEast_MR,sumstat = param[,11:29],param = param[,c(1:9)],method = "neuralnet",tol = 0.1,numnet = 50) -->
+<!-- ``` -->
+
+<!-- ```{r, echo=FALSE} -->
+
+
+<!-- long <- densities_plot(param$Long1,nn2pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn2pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn2pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn2pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn1pop$adj.values[,"migration"],title = "migration") -->
+
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none")) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_VaryingRecentBott.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+<!-- We now also include a variation of the Mutation Rate. -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- param = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_1-1sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_1-2sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_1-3sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_1-4sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_1-5sum.stat.txt", header = T) -->
+<!--  ) -->
+
+<!-- stat.obs = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs.txt",header = T) -->
+<!-- stat.obs_moinsMR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsMR.txt",header = T) -->
+
+<!-- boxplot(param[,(length(param)-19):(length(param))], -->
+<!--         las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,0.5)) -->
+<!-- axis(1, at= 1:20,c(paste("SFS",seq(1:7)),paste("RV",seq(1:13))), las=2) -->
+<!-- points(1:20,stat.obs,pch=3,col="red") -->
+<!-- legend("topright","Obs",pch=3,col="red") -->
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- nn3pop <- abc(target = stat.obs_moinsMR,sumstat = param[,12:31],param = param[,c(1:10)],method = "neuralnet",tol = 0.1,numnet = 50) -->
+
+<!-- ``` -->
+
+<!-- ```{r, echo=FALSE} -->
+
+<!-- long <- densities_plot(param$Long1,nn3pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn3pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn3pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn3pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn3pop$adj.values[,"migration"],title = "migration") -->
+<!-- sizeBeforeExp <- densities_plot(param$SizeBeforeExpansion,nn3pop$adj.values[,"SizeBeforeExpansion"],title = "SizeBeforeExpansion") -->
+<!-- TimeBott <- densities_plot(param$TimeOfBottleneck,nn3pop$adj.values[,"TimeOfBottleneck"],title = "TimeBott") -->
+<!-- TimeRecBott <- densities_plot(param$TimeForRecentBott,nn3pop$adj.values[,"TimeForRecentBott"],title = "TimeForRecentBott") -->
+<!-- AncSize <- densities_plot(param$AncestralSize,nn3pop$adj.values[,"AncestralSize"],title = "AncestralSize") -->
+
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none"), -->
+<!--                 sizeBeforeExp + theme(legend.position="none"), -->
+<!--                 TimeBott + theme(legend.position="none"), -->
+<!--                 TimeRecBott + theme(legend.position="none"), -->
+<!--                 AncSize + theme(legend.position="none") -->
+<!--                 ) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_VariableMutRate.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- dev.off() -->
+<!-- ``` -->
+<!-- The lower mutation rate resulted in some missing data due to homozygosity. We will now implement a variation on the carrying capacity for the sahel region (from 10 to 100), before the halfing of this capacity. These estimations are based on several muation rates, from 1.5e-07 to 1.5e-05. About 5700 simulations are used below. -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- param = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_2-1sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_2-2sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_2-3sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_2-4sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_2-5sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_2-6sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_2-7sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_2-8sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_2-9sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/rice_testVarMutRate_2-10sum.stat.txt", header = T) -->
+<!--  ) -->
+
+<!-- stat.obs_moinsMR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsMR.txt",header = T) -->
+
+<!-- boxplot(param[,(length(param)-19):(length(param))], -->
+<!--         las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,0.5)) -->
+<!-- axis(1, at= 1:20,c(paste("SFS",seq(1:7)),paste("RV",seq(1:13))), las=2) -->
+<!-- points(1:20,stat.obs_moinsMR,pch=3,col="red") -->
+<!-- legend("topright","Obs",pch=3,col="red") -->
+<!-- ``` -->
+
+<!-- To have an idea about the impact of mutation rate, we can use a ggplot. -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- library(reshape2) -->
+<!-- param_melted <- melt(param[,c(1:11,13:32)],id.vars = c("Long1","Lat1","generations","accroissement", -->
+<!--                      "migration","SizeBeforeExpansion","TimeOfBottleneck","AncestralSize", -->
+<!--                      "TimeForRecentBott","MutationRate","MainCarryingCapacity")) -->
+
+<!-- ggplot() + geom_boxplot(data = param_melted,aes(x = variable,y=value,fill=factor(MutationRate)),outlier.size = 0.1) + -->
+<!--   geom_point(data=melt(stat.obs_moinsMR),aes(x = variable,y=value),size=2,color="red") -->
+
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ggplot_mutRate.pdf',width = 18,height = 10) -->
+<!-- ggplot() + geom_boxplot(data = param_melted,aes(x = variable,y=value,fill=factor(MutationRate)),outlier.size = 0.1) + -->
+<!--   geom_point(data=melt(stat.obs_moinsMR),aes(x = variable,y=value),size=2,color="red") -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+<!-- We then plot the ABC estimations based on several mutation rate. -->
+
+<!-- The first one is for 1e-05 (with a tolerance of 0.1) : -->
+
+<!-- ```{r, include=FALSE} -->
+<!-- nn4pop <- abc(target = stat.obs_moinsMR,sumstat = param[which(param$MutationRate==1e-05),13:32],param = param[which(param$MutationRate==1e-05),c(1:11)],method = "neuralnet",tol = 0.1,numnet = 50) -->
+
+<!-- ``` -->
+
+<!-- ```{r, echo=FALSE} -->
+
+<!-- long <- densities_plot(param$Long1,nn4pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn4pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn4pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn4pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn4pop$adj.values[,"migration"],title = "migration") -->
+<!-- sizeBeforeExp <- densities_plot(param$SizeBeforeExpansion,nn4pop$adj.values[,"SizeBeforeExpansion"],title = "SizeBeforeExpansion") -->
+<!-- TimeBott <- densities_plot(param$TimeOfBottleneck,nn4pop$adj.values[,"TimeOfBottleneck"],title = "TimeBott") -->
+<!-- TimeRecBott <- densities_plot(param$TimeForRecentBott,nn4pop$adj.values[,"TimeForRecentBott"],title = "TimeForRecentBott") -->
+<!-- AncSize <- densities_plot(param$AncestralSize,nn4pop$adj.values[,"AncestralSize"],title = "AncestralSize") -->
+<!-- K <- densities_plot(param$MainCarryingCapacity,nn4pop$adj.values[,"MainCarryingCapacity"],title = "MainCarryingCapacity") -->
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none"), -->
+<!--                 sizeBeforeExp + theme(legend.position="none"), -->
+<!--                 TimeBott + theme(legend.position="none"), -->
+<!--                 TimeRecBott + theme(legend.position="none"), -->
+<!--                 AncSize + theme(legend.position="none"), -->
+<!--                 K + theme(legend.position="none") -->
+<!--                 ) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_withK_MutRate1e05.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+<!-- The second one is for 1.5e-06 : -->
+
+<!-- ```{r, include=FALSE} -->
+<!-- nn4pop <- abc(target = stat.obs_moinsMR,sumstat = param[which(param$MutationRate==1.5e-06),13:32],param = param[which(param$MutationRate==1.5e-06),c(1:11)],method = "neuralnet",tol = 0.1,numnet = 50) -->
+
+<!-- ``` -->
+<!-- ```{r, echo=FALSE} -->
+
+<!-- long <- densities_plot(param$Long1,nn4pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn4pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn4pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn4pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn4pop$adj.values[,"migration"],title = "migration") -->
+<!-- sizeBeforeExp <- densities_plot(param$SizeBeforeExpansion,nn4pop$adj.values[,"SizeBeforeExpansion"],title = "SizeBeforeExpansion") -->
+<!-- TimeBott <- densities_plot(param$TimeOfBottleneck,nn4pop$adj.values[,"TimeOfBottleneck"],title = "TimeBott") -->
+<!-- TimeRecBott <- densities_plot(param$TimeForRecentBott,nn4pop$adj.values[,"TimeForRecentBott"],title = "TimeForRecentBott") -->
+<!-- AncSize <- densities_plot(param$AncestralSize,nn4pop$adj.values[,"AncestralSize"],title = "AncestralSize") -->
+<!-- K <- densities_plot(param$MainCarryingCapacity,nn4pop$adj.values[,"MainCarryingCapacity"],title = "MainCarryingCapacity") -->
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none"), -->
+<!--                 sizeBeforeExp + theme(legend.position="none"), -->
+<!--                 TimeBott + theme(legend.position="none"), -->
+<!--                 TimeRecBott + theme(legend.position="none"), -->
+<!--                 AncSize + theme(legend.position="none"), -->
+<!--                 K + theme(legend.position="none") -->
+<!--                 ) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+
+<!-- pdf(file = 'ABC_withK_MutRate15e06.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+<!-- The last one is for 1e-06 : -->
+
+<!-- ```{r, include=FALSE} -->
+<!-- nn4pop <- abc(target = stat.obs_moinsMR,sumstat = param[which(param$MutationRate==1e-06),13:32],param = param[which(param$MutationRate==1e-06),c(1:11)],method = "neuralnet",tol = 0.1,numnet = 50) -->
+
+<!-- ``` -->
+<!-- ```{r, echo=FALSE} -->
+
+<!-- long <- densities_plot(param$Long1,nn4pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn4pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn4pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn4pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn4pop$adj.values[,"migration"],title = "migration") -->
+<!-- sizeBeforeExp <- densities_plot(param$SizeBeforeExpansion,nn4pop$adj.values[,"SizeBeforeExpansion"],title = "SizeBeforeExpansion") -->
+<!-- TimeBott <- densities_plot(param$TimeOfBottleneck,nn4pop$adj.values[,"TimeOfBottleneck"],title = "TimeBott") -->
+<!-- TimeRecBott <- densities_plot(param$TimeForRecentBott,nn4pop$adj.values[,"TimeForRecentBott"],title = "TimeForRecentBott") -->
+<!-- AncSize <- densities_plot(param$AncestralSize,nn4pop$adj.values[,"AncestralSize"],title = "AncestralSize") -->
+<!-- K <- densities_plot(param$MainCarryingCapacity,nn4pop$adj.values[,"MainCarryingCapacity"],title = "MainCarryingCapacity") -->
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none"), -->
+<!--                 sizeBeforeExp + theme(legend.position="none"), -->
+<!--                 TimeBott + theme(legend.position="none"), -->
+<!--                 TimeRecBott + theme(legend.position="none"), -->
+<!--                 AncSize + theme(legend.position="none"), -->
+<!--                 K + theme(legend.position="none") -->
+<!--                 ) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_withK_MutRate1e06.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+<!-- Now we plot the ABC analysis based on 3 mutation rates (1e-06, 1.5e-06 and 1e-05) with a tolerance of 0.05 : -->
+
+<!-- ```{r, include=FALSE} -->
+<!-- nn4pop <- abc(target = stat.obs_moinsMR,sumstat = param[which(param$MutationRate==1e-06|param$MutationRate==1.5e-06|param$MutationRate==1e-05),13:32],param = param[which(param$MutationRate==1e-06|param$MutationRate==1.5e-06|param$MutationRate==1e-05),c(1:11)],method = "neuralnet",tol = 0.05,numnet = 50) -->
+
+<!-- ``` -->
+<!-- ```{r, echo=FALSE} -->
+
+<!-- long <- densities_plot(param$Long1,nn4pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn4pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn4pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn4pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn4pop$adj.values[,"migration"],title = "migration") -->
+<!-- sizeBeforeExp <- densities_plot(param$SizeBeforeExpansion,nn4pop$adj.values[,"SizeBeforeExpansion"],title = "SizeBeforeExpansion") -->
+<!-- TimeBott <- densities_plot(param$TimeOfBottleneck,nn4pop$adj.values[,"TimeOfBottleneck"],title = "TimeBott") -->
+<!-- TimeRecBott <- densities_plot(param$TimeForRecentBott,nn4pop$adj.values[,"TimeForRecentBott"],title = "TimeForRecentBott") -->
+<!-- AncSize <- densities_plot(param$AncestralSize,nn4pop$adj.values[,"AncestralSize"],title = "AncestralSize") -->
+<!-- K <- densities_plot(param$MainCarryingCapacity,nn4pop$adj.values[,"MainCarryingCapacity"],title = "MainCarryingCapacity") -->
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none"), -->
+<!--                 sizeBeforeExp + theme(legend.position="none"), -->
+<!--                 TimeBott + theme(legend.position="none"), -->
+<!--                 TimeRecBott + theme(legend.position="none"), -->
+<!--                 AncSize + theme(legend.position="none"), -->
+<!--                 K + theme(legend.position="none") -->
+<!--                 ) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_withK_3MutRates.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+<!-- Now we plot the ABC analysis based on all mutation rates (tolerance of 0.02) : -->
+
+<!-- ```{r, include=FALSE} -->
+<!-- nn4pop <- abc(target = stat.obs_moinsMR,sumstat = param[,13:32],param = param[,c(1:11)],method = "neuralnet",tol = 0.02,numnet = 50) -->
+<!-- ``` -->
+<!-- ```{r, echo=FALSE} -->
+<!-- long <- densities_plot(param$Long1,nn4pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn4pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn4pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn4pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn4pop$adj.values[,"migration"],title = "migration") -->
+<!-- sizeBeforeExp <- densities_plot(param$SizeBeforeExpansion,nn4pop$adj.values[,"SizeBeforeExpansion"],title = "SizeBeforeExpansion") -->
+<!-- TimeBott <- densities_plot(param$TimeOfBottleneck,nn4pop$adj.values[,"TimeOfBottleneck"],title = "TimeBott") -->
+<!-- TimeRecBott <- densities_plot(param$TimeForRecentBott,nn4pop$adj.values[,"TimeForRecentBott"],title = "TimeForRecentBott") -->
+<!-- AncSize <- densities_plot(param$AncestralSize,nn4pop$adj.values[,"AncestralSize"],title = "AncestralSize") -->
+<!-- K <- densities_plot(param$MainCarryingCapacity,nn4pop$adj.values[,"MainCarryingCapacity"],title = "MainCarryingCapacity") -->
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none"), -->
+<!--                 sizeBeforeExp + theme(legend.position="none"), -->
+<!--                 TimeBott + theme(legend.position="none"), -->
+<!--                 TimeRecBott + theme(legend.position="none"), -->
+<!--                 AncSize + theme(legend.position="none"), -->
+<!--                 K + theme(legend.position="none") -->
+<!--                 ) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_withK_AllMutRate.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+<!-- For the subsequent analysis, we will keep a fixed mutation rate at 1e-6. -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- param = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_1.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_2.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_3.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_4.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_5.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_6.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_7.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--     read.table("~/Riz_analysis/splatche/splatche_riz_final_8.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--     read.table("~/Riz_analysis/splatche/splatche_riz_final_9.moinsEst_MR_sum.stat.txt", header = T) -->
+
+
+<!--  ) -->
+
+<!-- stat.obs_moinsEast_MR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsEast_MR.txt",header = T) -->
+
+<!-- boxplot(param[,(length(param)-18):(length(param))], -->
+<!--         las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,0.5)) -->
+<!-- axis(1, at= 1:19,c(paste("SFS",seq(1:7)),paste("RV",seq(1:12))), las=2) -->
+<!-- points(1:19,stat.obs_moinsEast_MR,pch=3,col="red") -->
+<!-- legend("topright","Obs",pch=3,col="red") -->
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- nn6pop <- abc(target = stat.obs_moinsEast_MR,sumstat = param[,13:31],param = param[,c(1:9,11)],method = "neuralnet",tol = 0.01,numnet = 100) -->
+<!-- ``` -->
+<!-- ```{r, echo=FALSE} -->
+<!-- long <- densities_plot(param$Long1,nn6pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn6pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn6pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn6pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn6pop$adj.values[,"migration"],title = "migration") -->
+<!-- sizeBeforeExp <- densities_plot(param$SizeBeforeExpansion,nn6pop$adj.values[,"SizeBeforeExpansion"],title = "SizeBeforeExpansion") -->
+<!-- TimeBott <- densities_plot(param$TimeOfBottleneck,nn6pop$adj.values[,"TimeOfBottleneck"],title = "TimeBott") -->
+<!-- TimeRecBott <- densities_plot(param$TimeForRecentBott,nn6pop$adj.values[,"TimeForRecentBott"],title = "TimeForRecentBott") -->
+<!-- AncSize <- densities_plot(param$AncestralSize,nn6pop$adj.values[,"AncestralSize"],title = "AncestralSize") -->
+<!-- K <- densities_plot(param$MainCarryingCapacity,nn6pop$adj.values[,"MainCarryingCapacity"],title = "MainCarryingCapacity") -->
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none"), -->
+<!--                 sizeBeforeExp + theme(legend.position="none"), -->
+<!--                 TimeBott + theme(legend.position="none"), -->
+<!--                 TimeRecBott + theme(legend.position="none"), -->
+<!--                 AncSize + theme(legend.position="none"), -->
+<!--                 K + theme(legend.position="none") -->
+<!--                 ) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+
+<!-- ``` -->
+
+
+<!-- ```{r map} -->
+<!-- # Repr?sentation des densit?s sur la carte -->
+
+
+<!-- map <- as.data.frame(nn6pop$adj.values[,1:2]) -->
+
+
+<!-- posteriorposition_map <- function(posteriorposition = posteriorposition,title="") { -->
+<!--   ggplot()+   -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), -->
+<!--                  fill="lightblue", data = data.ocean, size = .3) + -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), data = data, -->
+<!--                  colour ='antiquewhite4', fill = "white", size = .3) + -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), data = data.lakes, -->
+<!--                  colour ='lightblue',fill="lightblue", size = .3) + -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), data = data.playas, -->
+<!--                  colour ='lightblue',fill="lightblue", size = .3) + -->
+<!--     stat_density2d(data = posteriorposition, -->
+<!--                    aes(x=Long1,y=Lat1,  fill = ..level.., alpha = ..level..), -->
+<!--                    size = 0.1, geom = 'polygon',n = 200) + -->
+<!--     scale_fill_gradient(low = "green", high = "red",guide=FALSE) + -->
+<!--     scale_alpha(range = c(0.00, 0.25), guide = FALSE) + -->
+<!--     ggtitle(title) + -->
+<!--     theme_bw() + -->
+<!--     theme(axis.line = element_blank(), -->
+<!--           axis.title = element_blank(), -->
+<!--           legend.key = element_blank(), -->
+<!--           panel.border = element_rect(colour = "black", -->
+<!--                                       size = .5, -->
+<!--                                       linetype = "solid" -->
+<!--           ) -->
+<!--     ) + coord_quickmap(xlim = c(-20,50),ylim =c(-0,35)) -->
+<!-- } -->
+
+<!-- library(cowplot) -->
+
+<!-- maps <- plot_grid(posteriorposition_map(map)) -->
+<!-- maps -->
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_final_moinsEst.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- maps -->
+<!-- dev.off() -->
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_final_moinsEst_map.pdf',width = 18,height = 14) -->
+<!-- maps -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- param = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_1.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_2.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_3.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_4.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_5.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_6.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/splatche_riz_final_7.moinsMR_sum.stat.txt", header = T), -->
+<!--     read.table("~/Riz_analysis/splatche/splatche_riz_final_8.moinsMR_sum.stat.txt", header = T), -->
+<!--     read.table("~/Riz_analysis/splatche/splatche_riz_final_9.moinsMR_sum.stat.txt", header = T) -->
+
+
+<!--  ) -->
+
+<!-- stat.obs_moinsMR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsMR.txt",header = T) -->
+
+<!-- boxplot(param[,(length(param)-19):(length(param))], -->
+<!--         las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,0.5)) -->
+<!-- axis(1, at= 1:20,c(paste("SFS",seq(1:7)),paste("RV",seq(1:13))), las=2) -->
+<!-- points(1:20,stat.obs_moinsMR,pch=3,col="red") -->
+<!-- legend("topright","Obs",pch=3,col="red") -->
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+
+<!-- nn7pop <- abc(target = stat.obs_moinsMR,sumstat = param[,13:32],param = param[,c(1:9,11)],method = "neuralnet",tol = 0.05,numnet = 100) -->
+<!-- ``` -->
+<!-- ```{r, echo=FALSE} -->
+<!-- long <- densities_plot(param$Long1,nn7pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn7pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn7pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn7pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn7pop$adj.values[,"migration"],title = "migration") -->
+<!-- sizeBeforeExp <- densities_plot(param$SizeBeforeExpansion,nn7pop$adj.values[,"SizeBeforeExpansion"],title = "SizeBeforeExpansion") -->
+<!-- TimeBott <- densities_plot(param$TimeOfBottleneck,nn7pop$adj.values[,"TimeOfBottleneck"],title = "TimeBott") -->
+<!-- TimeRecBott <- densities_plot(param$TimeForRecentBott,nn7pop$adj.values[,"TimeForRecentBott"],title = "TimeForRecentBott") -->
+<!-- AncSize <- densities_plot(param$AncestralSize,nn7pop$adj.values[,"AncestralSize"],title = "AncestralSize") -->
+<!-- K <- densities_plot(param$MainCarryingCapacity,nn7pop$adj.values[,"MainCarryingCapacity"],title = "MainCarryingCapacity") -->
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none"), -->
+<!--                 sizeBeforeExp + theme(legend.position="none"), -->
+<!--                 TimeBott + theme(legend.position="none"), -->
+<!--                 TimeRecBott + theme(legend.position="none"), -->
+<!--                 AncSize + theme(legend.position="none"), -->
+<!--                 K + theme(legend.position="none") -->
+<!--                 ) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+
+<!-- ``` -->
+
+<!-- ```{r map2} -->
+<!-- # Repr?sentation des densit?s sur la carte -->
+
+
+<!-- map <- as.data.frame(nn7pop$adj.values[,1:2]) -->
+
+
+<!-- posteriorposition_map <- function(posteriorposition = posteriorposition,title="") { -->
+<!--   ggplot()+   -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), -->
+<!--                  fill="lightblue", data = data.ocean, size = .3) + -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), data = data, -->
+<!--                  colour ='antiquewhite4', fill = "white", size = .3) + -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), data = data.lakes, -->
+<!--                  colour ='lightblue',fill="lightblue", size = .3) + -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), data = data.playas, -->
+<!--                  colour ='lightblue',fill="lightblue", size = .3) + -->
+<!--     stat_density2d(data = posteriorposition, -->
+<!--                    aes(x=Long1,y=Lat1,  fill = ..level.., alpha = ..level..), -->
+<!--                    size = 0.1, geom = 'polygon',n = 100) + -->
+<!--     scale_fill_gradient(low = "green", high = "red",guide=FALSE) + -->
+<!--     scale_alpha(range = c(0.00, 0.25), guide = FALSE) + -->
+<!--     ggtitle(title) + -->
+<!--     theme_bw() + -->
+<!--     theme(axis.line = element_blank(), -->
+<!--           axis.title = element_blank(), -->
+<!--           legend.key = element_blank(), -->
+<!--           panel.border = element_rect(colour = "black", -->
+<!--                                       size = .5, -->
+<!--                                       linetype = "solid" -->
+<!--           ) -->
+<!--     ) + coord_quickmap(xlim = c(-20,50),ylim =c(-0,35)) -->
+<!-- } -->
+
+<!-- library(cowplot) -->
+
+<!-- maps <- plot_grid(posteriorposition_map(map)) -->
+<!-- maps -->
+<!-- ``` -->
+
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_final_withEst.pdf',width = 18,height = 14) -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+<!-- maps -->
+<!-- dev.off() -->
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- pdf(file = 'ABC_final_withEst_map.pdf',width = 18,height = 14) -->
+<!-- maps -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+
+
+
+
+
+
+
+
+
+
+<!-- ```{r, echo=FALSE} -->
+<!-- param = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_1.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_2.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_3.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_4.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_5.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_6.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_7.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_8.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_9.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   #↕read.table("~/Riz_analysis/splatche/riz_final_newpriors_10.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_11.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--  # read.table("~/Riz_analysis/splatche/riz_final_newpriors_12.moinsEst_MR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_13.moinsEst_MR_sum.stat.txt", header = T) -->
+
+
+<!--  ) -->
+
+<!-- stat.obs_moinsEast_MR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsEast_MR.txt",header = T) -->
+
+<!-- boxplot(param[,13:31], -->
+<!--         las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,0.5)) -->
+<!-- axis(1, at= 1:19,c(paste("SFS",seq(1:7)),paste("RV",seq(1:12))), las=2) -->
+<!-- points(1:19,stat.obs_moinsEast_MR,pch=3,col="red") -->
+<!-- legend("topright","Obs",pch=3,col="red") -->
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+<!-- nn8pop <- abc(target = stat.obs_moinsEast_MR,sumstat = param[,13:31],param = param[,c(1:9,11)],method = "neuralnet",tol = 0.018,numnet = 100) -->
+<!-- ``` -->
+<!-- ```{r, echo=FALSE} -->
+<!-- long <- densities_plot(param$Long1,nn8pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn8pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn8pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn8pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn8pop$adj.values[,"migration"],title = "migration") -->
+<!-- sizeBeforeExp <- densities_plot(param$SizeBeforeExpansion,nn8pop$adj.values[,"SizeBeforeExpansion"],title = "SizeBeforeExpansion") -->
+<!-- TimeBott <- densities_plot(param$TimeOfBottleneck,nn8pop$adj.values[,"TimeOfBottleneck"],title = "TimeBott") -->
+<!-- TimeRecBott <- densities_plot(param$TimeForRecentBott,nn8pop$adj.values[,"TimeForRecentBott"],title = "TimeForRecentBott") -->
+<!-- AncSize <- densities_plot(param$AncestralSize,nn8pop$adj.values[,"AncestralSize"],title = "AncestralSize") -->
+<!-- K <- densities_plot(param$MainCarryingCapacity,nn8pop$adj.values[,"MainCarryingCapacity"],title = "MainCarryingCapacity") -->
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none"), -->
+<!--                 sizeBeforeExp + theme(legend.position="none"), -->
+<!--                 TimeBott + theme(legend.position="none"), -->
+<!--                 TimeRecBott + theme(legend.position="none"), -->
+<!--                 AncSize + theme(legend.position="none"), -->
+<!--                 K + theme(legend.position="none") -->
+<!--                 ) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+
+<!-- ``` -->
+
+<!-- ```{r map3} -->
+<!-- # Repr?sentation des densit?s sur la carte -->
+
+
+<!-- map <- as.data.frame(nn8pop$adj.values[,1:2]) -->
+
+
+<!-- posteriorposition_map <- function(posteriorposition = posteriorposition,title="") { -->
+<!--   ggplot()+   -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), -->
+<!--                  fill="lightblue", data = data.ocean, size = .3) + -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), data = data, -->
+<!--                  colour ='antiquewhite4', fill = "white", size = .3) + -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), data = data.lakes, -->
+<!--                  colour ='lightblue',fill="lightblue", size = .3) + -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), data = data.playas, -->
+<!--                  colour ='lightblue',fill="lightblue", size = .3) + -->
+<!--     stat_density2d(data = posteriorposition, -->
+<!--                    aes(x=Long1,y=Lat1,  fill = ..level.., alpha = ..level..), -->
+<!--                    size = 0.1, geom = 'polygon',n = 100) + -->
+<!--     scale_fill_gradient(low = "green", high = "red",guide=FALSE) + -->
+<!--     scale_alpha(range = c(0.00, 0.25), guide = FALSE) + -->
+<!--     ggtitle(title) + -->
+<!--     theme_bw() + -->
+<!--     theme(axis.line = element_blank(), -->
+<!--           axis.title = element_blank(), -->
+<!--           legend.key = element_blank(), -->
+<!--           panel.border = element_rect(colour = "black", -->
+<!--                                       size = .5, -->
+<!--                                       linetype = "solid" -->
+<!--           ) -->
+<!--     ) + coord_quickmap(xlim = c(-20,50),ylim =c(-0,35)) -->
+<!-- } -->
+
+<!-- library(cowplot) -->
+
+<!-- maps <- plot_grid(posteriorposition_map(map)) -->
+<!-- maps -->
+<!-- ``` -->
+
+<!-- ```{r, echo=FALSE} -->
+<!-- param = rbind( -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_1.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_2.moinsMR_sum.stat.txt", header = T), -->
+<!--  # read.table("~/Riz_analysis/splatche/riz_final_newpriors_3.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_4.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_5.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_6.moinsMR_sum.stat.txt", header = T), -->
+<!--   read.table("~/Riz_analysis/splatche/riz_final_newpriors_7.moinsMR_sum.stat.txt", header = T), -->
+<!--     read.table("~/Riz_analysis/splatche/riz_final_newpriors_8.moinsMR_sum.stat.txt", header = T), -->
+<!--     read.table("~/Riz_analysis/splatche/riz_final_newpriors_9.moinsMR_sum.stat.txt", header = T), -->
+<!--  read.table("~/Riz_analysis/splatche/riz_final_newpriors_11.moinsMR_sum.stat.txt", header = T), -->
+<!--  read.table("~/Riz_analysis/splatche/riz_final_newpriors_13.moinsMR_sum.stat.txt", header = T) -->
+
+
+<!--  ) -->
+
+<!-- stat.obs_moinsMR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsMR.txt",header = T) -->
+
+<!-- boxplot(param[,(length(param)-19):(length(param))], -->
+<!--         las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,0.5)) -->
+<!-- axis(1, at= 1:20,c(paste("SFS",seq(1:7)),paste("RV",seq(1:13))), las=2) -->
+<!-- points(1:20,stat.obs_moinsMR,pch=3,col="red") -->
+<!-- legend("topright","Obs",pch=3,col="red") -->
+<!-- ``` -->
+<!-- ```{r, include=FALSE} -->
+
+<!-- nn9pop <- abc(target = stat.obs_moinsMR,sumstat = param[,13:32],param = param[,c(1:9,11)],method = "neuralnet",tol = 0.02,numnet = 100) -->
+<!-- ``` -->
+<!-- ```{r, echo=FALSE} -->
+<!-- long <- densities_plot(param$Long1,nn9pop$adj.values[,"Long1"],title = "Longitude") -->
+<!-- lat <- densities_plot(param$Lat1,nn9pop$adj.values[,"Lat1"],title = "Latitude") -->
+<!-- gen <- densities_plot(param$generations,nn9pop$adj.values[,"generations"],title = "generations") -->
+<!-- acc <- densities_plot(param$accroissement,nn9pop$adj.values[,"accroissement"],title = "accroissement") -->
+<!-- mig <- densities_plot(param$migration,nn9pop$adj.values[,"migration"],title = "migration") -->
+<!-- sizeBeforeExp <- densities_plot(param$SizeBeforeExpansion,nn9pop$adj.values[,"SizeBeforeExpansion"],title = "SizeBeforeExpansion") -->
+<!-- TimeBott <- densities_plot(param$TimeOfBottleneck,nn9pop$adj.values[,"TimeOfBottleneck"],title = "TimeBott") -->
+<!-- TimeRecBott <- densities_plot(param$TimeForRecentBott,nn9pop$adj.values[,"TimeForRecentBott"],title = "TimeForRecentBott") -->
+<!-- AncSize <- densities_plot(param$AncestralSize,nn9pop$adj.values[,"AncestralSize"],title = "AncestralSize") -->
+<!-- K <- densities_plot(param$MainCarryingCapacity,nn9pop$adj.values[,"MainCarryingCapacity"],title = "MainCarryingCapacity") -->
+
+<!-- prow<-plot_grid(lat + theme(legend.position="none"), -->
+<!--                 long + theme(legend.position="none"), -->
+<!--                 gen + theme(legend.position="none"), -->
+<!--                 mig + theme(legend.position="none"), -->
+<!--                 acc + theme(legend.position="none"), -->
+<!--                 sizeBeforeExp + theme(legend.position="none"), -->
+<!--                 TimeBott + theme(legend.position="none"), -->
+<!--                 TimeRecBott + theme(legend.position="none"), -->
+<!--                 AncSize + theme(legend.position="none"), -->
+<!--                 K + theme(legend.position="none") -->
+<!--                 ) -->
+<!-- grobs <- ggplotGrob(lat)$grobs -->
+<!-- legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]] -->
+<!-- plot_grid( prow, legend, rel_widths = c(3, .5)) -->
+
+
+
+<!-- ``` -->
+
+<!-- ```{r map3b} -->
+<!-- # Repr?sentation des densit?s sur la carte -->
+
+
+<!-- map <- as.data.frame(nn9pop$adj.values[,1:2]) -->
+
+
+<!-- posteriorposition_map <- function(posteriorposition = posteriorposition,title="") { -->
+<!--   ggplot()+   -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), -->
+<!--                  fill="lightblue", data = data.ocean, size = .3) + -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), data = data, -->
+<!--                  colour ='antiquewhite4', fill = "white", size = .3) + -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), data = data.lakes, -->
+<!--                  colour ='lightblue',fill="lightblue", size = .3) + -->
+<!--     geom_polygon(aes(x = long, y = lat, group = group), data = data.playas, -->
+<!--                  colour ='lightblue',fill="lightblue", size = .3) + -->
+<!--     stat_density2d(data = posteriorposition, -->
+<!--                    aes(x=Long1,y=Lat1,  fill = ..level.., alpha = ..level..), -->
+<!--                    size = 0.1, geom = 'polygon',n = 100) + -->
+<!--     scale_fill_gradient(low = "green", high = "red",guide=FALSE) + -->
+<!--     scale_alpha(range = c(0.00, 0.25), guide = FALSE) + -->
+<!--     ggtitle(title) + -->
+<!--     theme_bw() + -->
+<!--     theme(axis.line = element_blank(), -->
+<!--           axis.title = element_blank(), -->
+<!--           legend.key = element_blank(), -->
+<!--           panel.border = element_rect(colour = "black", -->
+<!--                                       size = .5, -->
+<!--                                       linetype = "solid" -->
+<!--           ) -->
+<!--     ) + coord_quickmap(xlim = c(-20,50),ylim =c(-0,35)) -->
+<!-- } -->
+
+<!-- library(cowplot) -->
+
+<!-- maps <- plot_grid(posteriorposition_map(map)) -->
+<!-- maps -->
+<!-- ``` -->
+
+
+
+
+
+```{r read_newpriorsB_withEast, echo=FALSE}
+param.moinsMR = rbind(
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_1.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_2.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_3.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_4.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_5.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_6.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_7.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_8.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_9.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_10.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_11.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_12.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_13.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_14.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_15.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_16.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_17.moinsMR_sum.stat.txt", header = T),
+    read.table("~/Riz_analysis/splatche/riz_newpriorsB_18.moinsMR_sum.stat.txt", header = T),
+    read.table("~/Riz_analysis/splatche/riz_newpriorsB_19.moinsMR_sum.stat.txt", header = T),
+    read.table("~/Riz_analysis/splatche/riz_newpriorsB_20.moinsMR_sum.stat.txt", header = T),
+    read.table("~/Riz_analysis/splatche/riz_newpriorsB_21.moinsMR_sum.stat.txt", header = T),
+    read.table("~/Riz_analysis/splatche/riz_newpriorsB_22.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_23.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_24.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_25.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_26.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_29.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_30.moinsMR_sum.stat.txt", header = T),  
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_31.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_32.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_33.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_34.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_35.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_36.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_37.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_38.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_39.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_40.moinsMR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_41.moinsMR_sum.stat.txt", header = T)
+  )
+
+stat.obs_moinsMR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsMR.txt",header = T)
+
+boxplot(param.moinsMR[,(length(param.moinsMR)-19):(length(param.moinsMR))],
+        las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,1))
+axis(1, at= 1:20,c(paste("SFS",seq(1:7)),paste("RV",seq(1:13))), las=2)
+points(1:20,stat.obs_moinsMR,pch=3,col="red")
+legend("topright","Observed",pch=3,col="red")
+```
+```{r nn10pop, include=FALSE}
+
+#nn10pop <- abc(target = stat.obs_moinsMR[c(1:20)],sumstat = param.moinsMR[,c(13:32)],param = param.moinsMR[,c(1:9,11)],method = "neuralnet",tol = 0.001,numnet = 500)
+#save(nn10pop,file ="/Users/cubry/Documents/Riz_analysis/splatche/nn10pop")
+load(file = '/Users/cubry/Documents/Riz_analysis/splatche/nn10pop')
+```
+```{r nn10pop_posts, echo=FALSE}
+long <- densities_plot(param.moinsMR$Long1,nn10pop$adj.values[,"Long1"],title = "Longitude")
+lat <- densities_plot(param.moinsMR$Lat1,nn10pop$adj.values[,"Lat1"],title = "Latitude")
+gen <- densities_plot(param.moinsMR$generations,nn10pop$adj.values[,"generations"],title = "Exp_length")
+acc <- densities_plot(param.moinsMR$accroissement,nn10pop$adj.values[,"accroissement"],title = "Growth rate")
+mig <- densities_plot(param.moinsMR$migration,nn10pop$adj.values[,"migration"],title = "Migration rate")
+sizeBeforeExp <- densities_plot(param.moinsMR$SizeBeforeExpansion,nn10pop$adj.values[,"SizeBeforeExpansion"],title = "Bott_size")
+TimeBott <- densities_plot(param.moinsMR$TimeOfBottleneck,nn10pop$adj.values[,"TimeOfBottleneck"],title = "Bott_length")
+TimeRecBott <- densities_plot(param.moinsMR$TimeForRecentBott,nn10pop$adj.values[,"TimeForRecentBott"],title = "Rec_bott_time")
+AncSize <- densities_plot(param.moinsMR$AncestralSize,nn10pop$adj.values[,"AncestralSize"],title = "Anc_Size")
+K <- densities_plot(param.moinsMR$MainCarryingCapacity,nn10pop$adj.values[,"MainCarryingCapacity"],title = "K")
+
+prow<-plot_grid(lat + theme(legend.position="none"),
+                long + theme(legend.position="none"),
+                gen + theme(legend.position="none"),
+                mig + theme(legend.position="none"),
+                acc + theme(legend.position="none"),
+                sizeBeforeExp + theme(legend.position="none"),
+                TimeBott + theme(legend.position="none"),
+                TimeRecBott + theme(legend.position="none"),
+                AncSize + theme(legend.position="none"),
+                K + theme(legend.position="none")
+                )
+grobs <- ggplotGrob(lat)$grobs
+legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]]
+plot_grid( prow, legend, rel_widths = c(3, .5))
+save_plot(filename = "/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/Posteriors_13groups_0001.pdf",plot_grid( prow, legend, rel_widths = c(3, .5)),base_height = 8,base_aspect_ratio = 2)
+
+```
+
+```{r nn10pop_map4}
+# Repr?sentation des densit?s sur la carte
+
+
+map <- as.data.frame(nn10pop$adj.values[,1:2])
+maps <- plot_grid(posteriorposition_map(map,n=100,h=30))
+maps
+#maps_raster <- plot_grid(posteriorposition_map_raster(map,n=100,h=30))
+#ggsave("/Users/cubry/Desktop/map_b.png",maps_raster)
+
+long <- qplot(nn10pop$adj.values[,1],geom="histogram",binwidth=4,xlab = "Posterior of longitude")
+lat <- qplot(nn10pop$adj.values[,2],geom="histogram",binwidth=4,xlab = "Posterior of latitude")
+save_plot(filename = "/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/Histos_coords_13groups_0001.pdf",plot_grid( long,lat),base_height = 4,base_aspect_ratio = 2)
+
+```
+
+
+
+```{r read_newpriorsB_withoutEast, echo=FALSE}
+param.moinsEstMR = rbind(
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_1.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_2.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_3.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_4.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_5.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_6.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_7.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_7.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_8.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_9.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_10.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_11.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_12.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_13.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_14.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_15.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_16.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_17.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_18.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_19.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_20.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_21.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_22.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_23.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_24.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/riz_newpriorsB_25.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_26.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_29.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_30.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_31.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_32.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_33.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_34.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_35.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_36.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_37.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_38.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_39.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_40.moinsEst_MR_sum.stat.txt", header = T),
+ read.table("~/Riz_analysis/splatche/riz_newpriorsB_41.moinsEst_MR_sum.stat.txt", header = T)
+  
+ )
+
+stat.obs_moinsEst_MR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsEast_MR.txt",header = T)
+
+boxplot(param.moinsEstMR[,(length(param.moinsEstMR)-23):(length(param.moinsEstMR)-5)],
+        las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,1))
+axis(1, at= 1:19,c(paste("SFS",seq(1:7)),paste("RV",seq(1:12))), las=2)
+points(1:19,stat.obs_moinsEst_MR,pch=3,col="red")
+legend("topright","Obs",pch=3,col="red")
+```
+```{r nn11pop, include=FALSE}
+
+#nn11pop <- abc(target = stat.obs_moinsEst_MR[c(1:19)],sumstat = param.moinsEstMR[,c(13:31)],param = param.moinsEstMR[,c(1:9,11)],method = "neuralnet",tol = 0.001,numnet = 500)
+#save(nn11pop,file ="/Users/cubry/Documents/Riz_analysis/splatche/nn11pop")
+load('/Users/cubry/Documents/Riz_analysis/splatche/nn11pop')
+```
+```{r nn11pop_posts, echo=FALSE}
+long <- densities_plot(param.moinsEstMR$Long1,nn11pop$adj.values[,"Long1"],title = "Longitude")
+lat <- densities_plot(param.moinsEstMR$Lat1,nn11pop$adj.values[,"Lat1"],title = "Latitude")
+gen <- densities_plot(param.moinsEstMR$generations,nn11pop$adj.values[,"generations"],title = "Exp_length")
+acc <- densities_plot(param.moinsEstMR$accroissement,nn11pop$adj.values[,"accroissement"],title = "Growth rate")
+mig <- densities_plot(param.moinsEstMR$migration,nn11pop$adj.values[,"migration"],title = "Migration rate")
+sizeBeforeExp <- densities_plot(param.moinsEstMR$SizeBeforeExpansion,nn11pop$adj.values[,"SizeBeforeExpansion"],title = "Bott_size")
+TimeBott <- densities_plot(param.moinsEstMR$TimeOfBottleneck,nn11pop$adj.values[,"TimeOfBottleneck"],title = "Bott_length")
+TimeRecBott <- densities_plot(param.moinsEstMR$TimeForRecentBott,nn11pop$adj.values[,"TimeForRecentBott"],title = "Rec_bott_time")
+AncSize <- densities_plot(param.moinsEstMR$AncestralSize,nn11pop$adj.values[,"AncestralSize"],title = "Anc_size")
+K <- densities_plot(param.moinsEstMR$MainCarryingCapacity,nn11pop$adj.values[,"MainCarryingCapacity"],title = "K")
+
+prow<-plot_grid(lat + theme(legend.position="none"),
+                long + theme(legend.position="none"),
+                gen + theme(legend.position="none"),
+                mig + theme(legend.position="none"),
+                acc + theme(legend.position="none"),
+                sizeBeforeExp + theme(legend.position="none"),
+                TimeBott + theme(legend.position="none"),
+                TimeRecBott + theme(legend.position="none"),
+                AncSize + theme(legend.position="none"),
+                K + theme(legend.position="none")
+                )
+grobs <- ggplotGrob(lat)$grobs
+legend <- grobs[[which(sapply(grobs, function(x) x$name) == "guide-box")]]
+plot_grid( prow, legend, rel_widths = c(3, .5))
+
+save_plot(filename = "/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/Posteriors_12groups_0001.pdf",plot_grid( prow, legend, rel_widths = c(3, .5)),base_height = 8,base_aspect_ratio = 2)
+
+
+```
+
+```{r nn11pop_map5}
+# Repr?sentation des densit?s sur la carte
+
+
+map <- as.data.frame(nn11pop$adj.values[,1:2])
+
+
+
+maps <- plot_grid(posteriorposition_map(map,n=100,h=30))
+maps
+#maps_raster <- plot_grid(posteriorposition_map_raster(map,n=100,h=30))
+#ggsave("/Users/cubry/Desktop/map_withtEast.png",maps_raster)
+
+long <- qplot(nn11pop$adj.values[,1],geom="histogram",binwidth=4,xlab = "Posterior of longitude")
+lat <- qplot(nn11pop$adj.values[,2],geom="histogram",binwidth=4,xlab = "Posterior of latitude")
+save_plot(filename = "/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/Histos_coords_12groups_0001.pdf",plot_grid( long,lat),base_height = 4,base_aspect_ratio = 2)
+
+```
+
+
+
+```{r validation 12 groups, include=FALSE}
+# Choosing a simulation from each of the three possible regions for african rice domestication, only ran once !!!
+
+# senegal <- which(param.moinsEstMR$Long1< -14 & param.moinsEstMR$Long1> -17 & param.moinsEstMR$Lat1 >11 & param.moinsEstMR$Lat1 <16)
+#  senegal_position <- sample(senegal,size = 1)
+#  while(length(which(is.na(param.moinsEstMR[senegal_position,])))!=0){
+#    senegal_position <- sample(senegal,size = 1)
+#  }
+# 
+# stat.obs_simul_west <- param.moinsEstMR[senegal_position,]
+#write.table(stat.obs_simul_west,"/Users/cubry/Documents/Riz_analysis/splatche/simul_west_retained_12grps")
+stat.obs_simul_west <-read.table("/Users/cubry/Documents/Riz_analysis/splatche/simul_west_retained_12grps")
+
+
+# chad <- which(param.moinsEstMR$Long1>13 & param.moinsEstMR$Long1<15 & param.moinsEstMR$Lat1 >13 & param.moinsEstMR$Lat1 <15)
+# chad_position <- sample(chad,size = 1)
+# while(length(which(is.na(param.moinsEstMR[chad_position,])))!=0){
+#   chad_position <- sample(chad,size = 1)
+# }
+#stat.obs_simul_east <- param.moinsEstMR[chad_position,]
+#write.table(stat.obs_simul_east,"/Users/cubry/Documents/Riz_analysis/splatche/simul_east_retained_12grps")
+stat.obs_simul_east <-read.table("/Users/cubry/Documents/Riz_analysis/splatche/simul_east_retained_12grps")
+
+# mali <- which(param.moinsEstMR$Long1> -3 & param.moinsEstMR$Long1< -1 & param.moinsEstMR$Lat1 >16 & param.moinsEstMR$Lat1 <18)
+# mali_position <- sample(mali,size = 1)
+# while(length(which(is.na(param.moinsEstMR[mali_position,])))!=0){
+#   mali_position <- sample(mali,size = 1)
+# }
+#stat.obs_simul_central <- param.moinsEstMR[mali_position,]
+#write.table(stat.obs_simul_central,"/Users/cubry/Documents/Riz_analysis/splatche/simul_central_retained_12grps")
+stat.obs_simul_central <- read.table("/Users/cubry/Documents/Riz_analysis/splatche/simul_central_retained_12grps")
+
+
+nnpop.simul_west <- abc(target = stat.obs_simul_west[13:31],sumstat = param.moinsEstMR[,c(13:31)],param = param.moinsEstMR[,c(1:9,11)],method = "neuralnet",tol = 0.001,numnet = 50)
+map <- as.data.frame(nnpop.simul_west$adj.values[,1:2])
+maps <- plot_grid(posteriorposition_map(map,n=100,h=30)+geom_point(aes(x= stat.obs_simul_west$Long1,y=stat.obs_simul_west$Lat1)))
+maps
+ggsave("/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/map_simul_west.png",maps)
+
+nnpop.simul_central <- abc(target = stat.obs_simul_central[13:31],sumstat = param.moinsEstMR[,c(13:31)],param = param.moinsEstMR[,c(1:9,11)],method = "neuralnet",tol = 0.001,numnet = 50)
+map <- as.data.frame(nnpop.simul_central$adj.values[,1:2])
+maps <- plot_grid(posteriorposition_map(map,n=100,h=30)+geom_point(aes(x= stat.obs_simul_central$Long1,y=stat.obs_simul_central$Lat1)))
+maps
+ggsave("/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/map_simul_central.png",maps)
+
+nnpop.simul_east <- abc(target = stat.obs_simul_east[13:31],sumstat = param.moinsEstMR[,c(13:31)],param = param.moinsEstMR[,c(1:9,11)],method = "neuralnet",tol = 0.001,numnet = 50)
+map <- as.data.frame(nnpop.simul_east$adj.values[,1:2])
+maps <- plot_grid(posteriorposition_map(map,n=100,h=30)+geom_point(aes(x= stat.obs_simul_east$Long1,y=stat.obs_simul_east$Lat1)))
+maps
+ggsave("/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/map_simul_east.png",maps)
+```
+
+```{r read_ppc_12groups, echo=FALSE}
+param.PPC_12groups = rbind(
+  read.table("~/Riz_analysis/splatche/ppc_riz_12_post.moinsEst_MR_sum.stat.txt", header = T),
+  read.table("~/Riz_analysis/splatche/ppc_riz_12_post_2.moinsEst_MR_sum.stat.txt", header = T)
+  )
+
+stat.obs_moinsEst_MR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsEast_MR.txt",header = T)
+
+param.PPC_12groups.reshape <- reshape2::melt(param.PPC_12groups[,13:31])
+
+
+ppc_12_groups <- qplot(data=param.PPC_12groups.reshape[-which(param.PPC_12groups.reshape[,"value"]==0|param.PPC_12groups.reshape[,"value"]>0.9),],
+      x=variable,y=value,
+      geom="violin") + geom_point(data = reshape2::melt(stat.obs_moinsEst_MR),aes(x=variable, y=value))+ geom_point(data = reshape2::melt(stat.obs_moinsEst_MR),aes(x=variable, y=value),col="red")+ theme(axis.text.x = element_text(angle = 90, hjust = 1))+ylab("Distributions of summary statistics")
+
+# boxplot(param.PPC_12groups[,13:31],
+#         las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,1))
+# axis(1, at= 1:19,c(paste("SFS",seq(1:7)),paste("RV",seq(1:12))), las=2)
+# points(1:19,stat.obs_moinsEst_MR,pch=3,col="red")
+# legend("topright","Obs",pch=3,col="red")
+
+ppc_12_ci <- apply(X = param.PPC_12groups[,13:31],MARGIN = 2,FUN=function(x){
+  y <- x[x>0]
+  y <- y[y<0.9]
+  c(quantile(y,probs = c(0.001315789,1-0.001315789),na.rm=TRUE))
+})
+ppc_12_ci <- rbind(stat.obs_moinsEst_MR,ppc_12_ci)
+
+row.names(ppc_12_ci) <- c("obs. value","lower 95% c.i. boundary, Bonferroni corrected","upper 95% c.i. boundary, Bonferroni corrected")
+write.table(t(ppc_12_ci),"/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/PPC_12_CI.txt",quote=FALSE)
+ggsave("/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/PPC_12_groups.png",ppc_12_groups)
+```
+
+```{r read_ppc_13groups, echo=FALSE}
+param.PPC_13groups = rbind(
+  read.table("~/Riz_analysis/splatche/ppc_riz_13_post_.moinsMR_sum.stat.txt", header = T)
+  )
+
+stat.obs_moinsMR = read.table("~/Riz_analysis/splatche/cult_rice_stat.obs_moinsMR.txt",header = T)
+
+param.PPC_13groups.reshape <- reshape2::melt(param.PPC_13groups[,13:32])
+
+
+ppc_13_groups <- qplot(data=param.PPC_13groups.reshape[-which(param.PPC_13groups.reshape[,"value"]==0|param.PPC_13groups.reshape[,"value"]>0.9),],
+      x=variable,y=value,
+      geom="violin") + geom_point(data = reshape2::melt(stat.obs_moinsMR),aes(x=variable, y=value))+ geom_point(data = reshape2::melt(stat.obs_moinsMR),aes(x=variable, y=value),col="red")+ theme(axis.text.x = element_text(angle = 90, hjust = 1))+ylab("Distributions of summary statistics")
+
+# boxplot(param.PPC_13groups[,13:32],
+#         las=2, main = "Simulated vs Observed sum stat",xaxt="n", ylim=c(0,1))
+# axis(1, at= 1:20,c(paste("SFS",seq(1:7)),paste("RV",seq(1:13))), las=2)
+# points(1:20,stat.obs_moinsMR,pch=3,col="red")
+# legend("topright","Obs",pch=3,col="red")
+
+ppc_13_ci <- apply(X = param.PPC_13groups[,13:32],MARGIN = 2,FUN=function(x){
+  y <- x[x>0]
+  y <- y[y<0.9]
+  c(quantile(y,probs = c(0.00125,1-0.00125),na.rm=TRUE))
+})
+ppc_13_ci <- rbind(stat.obs_moinsMR,ppc_13_ci)
+
+row.names(ppc_13_ci) <- c("obs. value","lower 95% c.i. boundary, Bonferroni corrected","upper 95% c.i. boundary, Bonferroni corrected")
+write.table(t(ppc_13_ci),"/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/PPC_13_CI.txt",quote=FALSE)
+ggsave("/Users/cubry/Dropbox/Tracing the origin and diversity of african rice using 263 wild and cultivated depthly resequenced accessions/modelisation/graphes geographic inference/PPC_13_groups.png",ppc_13_groups)
+```

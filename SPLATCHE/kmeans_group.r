@@ -32,8 +32,6 @@
 # using a k-means procedure with a rejection algorithm
 ####################
 
-# 
-
 
 #' Takes a matrix of coordinates and output a group composition
 #'

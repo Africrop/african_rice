@@ -1,9 +1,35 @@
+###################################################################################################################################
+#
+# Copyright 2017 IRD and Grenoble-Alpes University
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, see <http://www.gnu.org/licenses/> or
+# write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston,
+# MA 02110-1301, USA.
+#
+# You should have received a copy of the CeCILL-C license with this program.
+#If not see <http://www.cecill.info/licences/Licence_CeCILL-C_V1-en.txt>
+#
+# Intellectual property belongs to IRD and Grenoble-Alpes University
+#
+# Written by Philippe Cubry, Yves Vigouroux and Olivier François
+#
+###################################################################################################################################
+
 ######################################################
 # R script to compute set of frequencies and summary #
 # statistics on real datasets for Splatche analysis  #
-# January 18th 2016 - Version 1                      #
-# Written by Philippe Cubry                          #
-# Contributors O. Francois, Y. Vigouroux             #
 ######################################################
 
 #### Useful functions ####
@@ -28,12 +54,12 @@ histo.bin = function(x){
 
 #
 z.group = function(z){
-  sapply(1:13, FUN = function(i) sum(z[group == i]) )
+  sapply(1:12, FUN = function(i) sum(z[group == i]) )
 }
 
 #
 z.groupm = function(z){
-  sapply(1:13, FUN = function(i) mean(z[group == i]) )
+  sapply(1:12, FUN = function(i) mean(z[group == i]) )
 }
 
 
@@ -56,15 +82,18 @@ row.names(genotype) <- list_vcf
 
 # Filter glaberrima genotypes
 glab.genotypes <- genotype[which(row.names(genotype) %in% samples$code_vcf),]
-# Cleaning up
-rm(genotype)
 
-# Drop MR genotype
-glab.genotypes <- glab.genotypes[which(row.names(glab.genotypes)!="MR"),]
+
+# Drop MR and eastern genotype
+glab.genotypes <- glab.genotypes[which(row.names(glab.genotypes)!="MR"&
+                                   (row.names(glab.genotypes)!="ND")&
+                                   (row.names(glab.genotypes)!="EK")&
+                                   (row.names(glab.genotypes)!="KC")&
+                                   (row.names(glab.genotypes)!="IK")),]
 
 # Load group definition from previous analysis
 group = (read.table("./og_groups_final.txt", na.strings="-9"))
-group = group[which(group$V1 != "MR"),]
+group = group[(which(group$V1 != "ND" & group$V1 != "IK"& group$V1 != "EK"& group$V1 != "KC"& group$V1 != "MR")),]
 group = as.numeric(as.vector(group[,2]))
 
 # Data transformation
@@ -78,8 +107,6 @@ glab.genotypes.mat[glab.genotypes.mat == 1] = sample(c(0,2),
 glab.genotypes.mat[glab.genotypes.mat == -1] = rep(9, sum(glab.genotypes.mat == -1))
 glab.genotypes.mat[glab.genotypes.mat == 2] = rep(1, sum(glab.genotypes.mat == 2))
 
-
-
 #### Compute SFS on cultivated african ####
 #cult.african <- read.table("/Users/cubry/Documents/Mil_analysis/real_dataset_analysis/snps_polym_cultafrican.txt",header=T)
 spect = apply(glab.genotypes.mat, MARGIN = 2, FUN = maf3   )
@@ -88,9 +115,7 @@ plot(table(spect),xlab="",ylab="",main = "folded SFS using MAF")
 spect.poly <- spect[which(spect!=0)]
 plot(table(spect.poly),xlab="",ylab="",main = "folded SFS using MAF",las=2)
 
-write.table(spect,"./rice_folded_sfs_cult.txt")
-
-
+write.table(spect,"./rice_folded_sfs_cult_moinsEast_MR.txt")
 
 #### Compute summary statistics
 stat.obs <- NULL
@@ -110,6 +135,6 @@ z = sapply(1:nrow(glab.genotypes.mat),
            FUN = function(x) sum(ind1 == x) )
 
 stat.obs = as.data.frame(t(c(histo.bin(spect.poly)/sum(histo.bin(spect.poly)), z.groupm(z)/sum(z.groupm(z)))))
-colnames(stat.obs) <- c(paste("SFS",seq(1,7,1), sep=""),paste("RareVariants",seq(1,13,1), sep=""))
+colnames(stat.obs) <- c(paste("SFS",seq(1,7,1), sep=""),paste("RareVariants",seq(1,12,1), sep=""))
 
-write.table(stat.obs,"./cult_rice_stat.obs_moinsMR.txt")
+write.table(stat.obs,"./cult_rice_stat.obs_moinsEast_MR.txt")
