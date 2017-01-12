@@ -44,51 +44,51 @@ args <- commandArgs(TRUE)
 #### source useful file ####
 source("./splatche_input_files_creation_final_newpriorsB.R")
 
-#### Definition du nombre de runs et de populations sources si specifie dans l'appel du script (defaut a 1 et 1) ####
+#### Definie run numbers and number of source populations ####
 if (is.na(args[1])==TRUE){
   nrun <- 1 #nombre de runs
   norigin <- 1 #nombre de populations sources
 } else {nrun<-as.numeric(args[1]); norigin<-as.numeric(args[2])} #valeurs specifiees dans l'appel du script
 
-#### Boucle sur le nombre de runs ####
+#### loop over runs ####
 for (it in 1:nrun){
   print(paste(it,"over",nrun,sep=" ")) #compteur de run
 
-  ##### tirage des coordonnees des populations sources #####
-  coordo <- NULL #Initialisation d'une variable de stockage des coordonnees des populations sources
+  ##### sampling coordinates #####
+  coordo <- NULL
 
   for (ori in 1:norigin){
-    ox = runif(1, -16, 40) #tirage de la longitude
-    oy = runif(1, 0, 30) #tirage de la latitude
+    ox = runif(1, -16, 40) # longitude
+    oy = runif(1, 0, 30) # latitude
 
-    while(!is.african(cbind(ox,oy))){ #test des coordonnees pour verifier qu'on est pas dans l'eau, sinon on retire
+    while(!is.african(cbind(ox,oy))){
       ox = runif(1, -16, 40)
       oy = runif(1, 0, 30)
     }
-    coordo = rbind(coordo,c(ox,oy)) #stockage des coordonnees tirees
+    coordo = rbind(coordo,c(ox,oy)) # store coordinates
   }
 
-  ##### tirage des variables #####
-  ng <- sample(gen_min:gen_max,1) #tirage du nombre de generations a simuler
-  rate <- runif(1,acc_min,acc_max) #tirage du taux d'accroissement des populations
-  mig <- runif(1,mig_min,mig_max) #tirage du taux de migration
-  res <- sample(res_min:res_max,1) #tirage de la taille avant expansion
-  Tres <- sample(Tres_min:Tres_max,1) #tirage de la taille avant expansion
-  resB <- sample(resB_min:resB_max,1) #tirage de la taille avant expansion
-  MutRate<- sample(MutRate_prior,1)
-  K <- sample(K_min:K_max,1)
+  ##### sampling variables #####
+  ng <- sample(gen_min:gen_max,1) # generations number
+  rate <- runif(1,acc_min,acc_max) # growth rate
+  mig <- runif(1,mig_min,mig_max) # migration rate
+  res <- sample(res_min:res_max,1) # size just before expansion
+  Tres <- sample(Tres_min:Tres_max,1) # length of pre-expansion bottleneck
+  resB <- sample(resB_min:resB_max,1) # size before the pre-expansion bottleneck
+  MutRate<- sample(MutRate_prior,1) # mutation rate
+  K <- sample(K_min:K_max,1) # carrying capacity
 
-  TrecBott <- NULL
+  TrecBott <- NULL # time for recent collapse of effective size
   TrecBott <- sample(TrecBott_min:ng,1)
   while(!TrecBott<= ng){
-  TrecBott <- sample(TrecBott_min:TrecBott_max,1) #tirage de la generation de collapse du Ne avec condition
+  TrecBott <- sample(TrecBott_min:TrecBott_max,1)
   }
 
-  splatche(input = "settings.txt", ng, rate, mig, norigin,res,Tres,resB,TrecBott, MutRate, K, coord.o = coordo) #appel de la fonction Splatche
+  splatche(input = "settings.txt", ng, rate, mig, norigin,res,Tres,resB,TrecBott, MutRate, K, coord.o = coordo) # call Splatche function
   system(paste("splatche2-01 settings",ng,"_",rate,"_",mig,"_",res,"_",
-               Tres,"_",resB,"_",TrecBott,"_",MutRate,"_",K, ".txt", sep="")) #lancement de splatche avec les parametres tires
+               Tres,"_",resB,"_",TrecBott,"_",MutRate,"_",K, ".txt", sep="")) #launch Splatche with retained parameters
 
-  ##### stockage des parametres uniquement si Splatche a genere des fichiers de sortie #####
+  ##### store parameters only if Splatche generated output files #####
   if(file.exists(paste("./datasets_1layer/GeneticsOutput/settings",ng,"_",rate,"_",mig,"_",res,"_",
                        Tres,"_",resB,"_",TrecBott,"_",MutRate,"_",K,"_GeneSamples_2.arp" ,sep=""))){
 
@@ -97,10 +97,10 @@ for (it in 1:nrun){
       coo1<-cbind(coo1,coordo[npop,1],coordo[npop,2])
       noms <-cbind(noms,paste("Long",npop,sep=""),paste("Lat",npop,sep=""))
     }
-    param<- rbind(param,c(coo1,ng,rate,mig,res,Tres,resB,TrecBott,MutRate,K)) #stockage des parametres dans un fichier
+    param<- rbind(param,c(coo1,ng,rate,mig,res,Tres,resB,TrecBott,MutRate,K))
     colnames(param) <- c(noms,"generations","accroissement","migration","SizeBeforeExpansion",
                          "TimeOfBottleneck","AncestralSize","TimeForRecentBott","MutationRate","MainCarryingCapacity")
   }
-  ##### Sauvegarde des parametres des runs realises dans un fichier #####
+  ##### Save parameters #####
   write.table(file = paste("param_",job,".txt",sep=""), param, row.names = F, quote=F)
 }
