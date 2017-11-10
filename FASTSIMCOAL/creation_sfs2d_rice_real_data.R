@@ -34,68 +34,70 @@ library(gtable)
 library(cowplot)
 library(LEA)
 library(grid)
+library(data.table)
+
+#setwd("/data2/projects/africrop_models/Riz_fastsimcoal/")
 
 # Load SNPs data from polarized biallelic SNPs file
 snps.geno <- NULL
-print("read dataset 1")
-# temp <- read.table("/Users/cubry/Documents/Mil_data/genotypes_215/polarized_biallelic/chr1_215samples_polarized_SNPs_data_biallelic.txt",header=T)
-temp <- read.table("/data2/projects/africrop_models/polarized_snps_mil/polarized_biallelic/chr1_215samples_polarized_SNPs_data_biallelic_CORRECTED.txt",header=T)
+print("read dataset")
+temp <- read.table("allChr.recode.HAPLO.NEW.vcf",header=T,skip=38,comment.char="",colClasses = "character")
+names(temp)[1]<- "CHROM"
 row.names(temp) <- paste(temp[,1],"_",temp[,2],sep="")
-temp <- temp[,-c(1,2)]
+temp <- temp[,-c(1:9)]
+temp[temp=="."]<- "9"
+names(temp)[colnames(temp)=="ID1"] <- "ID"
+names(temp)[colnames(temp)=="NA."] <- "NA"
 snps.geno <- temp ; rm(temp)
 
-print("read other datasets and combine")
-for(i in 2:7){
-  # temp <- read.table(paste("/Users/cubry/Documents/Mil_data/genotypes_215/polarized_biallelic/chr",i,"_215samples_polarized_SNPs_data_biallelic.txt",sep=""),header=T)
-  temp <- read.table(paste("/data2/projects/africrop_models/polarized_snps_mil/polarized_biallelic/chr",i,"_215samples_polarized_SNPs_data_biallelic_CORRECTED.txt",sep=""),header=T)
-  row.names(temp) <- paste(temp[,1],"_",temp[,2],sep="")
-  temp <- temp[,-c(1,2)]
-  snps.geno <- rbind(snps.geno,temp) ; rm(temp)
-}
+# Load list of individuals
+glab <- read.table("List_glab_all.txt",na.strings="NaN") ; barth <- read.table("List_barth_all.txt")
+indiv <- rbind(glab,barth); names(indiv) <- c("Id","Species")
+
+# Removing odd and excluded individuals
+indiv_subset <- indiv[-which(indiv$Id=="MR"|indiv$Id=="KC"|indiv$Id=="IK"|
+                          indiv$Id=="EK"|indiv$Id=="ND"|indiv$Id=="AE"|
+                          indiv$Id=="AF"|indiv$Id=="BI"|indiv$Id=="CN"|
+                          indiv$Id=="BR"|indiv$Id=="CD"|indiv$Id=="DF"|
+                          indiv$Id=="AQ"|indiv$Id=="AA"|indiv$Id=="NL"|
+                          indiv$Id=="NM"|indiv$Id=="T"),]
+
 # Source used R scripts
-# source("/Users/cubry/Documents/scripts/fastsimcoal/R/groups_definition.R") # Load groups definition
-# source("/Users/cubry/Documents/scripts/fastsimcoal/R/functions.R") # Load used functions
-source("/home/cubry/scripts/prepare_data/groups_definition.R") # Load groups definition
-source("/home/cubry/scripts/prepare_data/functions.R") # Load used functions
-
-
-
+source("functions_daf.R") # Load used functions
 
 # Saving data
 print("save geno object")
-write.geno(t(snps.geno),"/data2/projects/africrop_models/polarized_snps_mil/results_b/snps_polarized_biallelic_215_CORRECTED.geno")
-# write.lfmm(t(snps.geno),"snps_polarized_biallelic_215.lfmm")
-# lfmm2geno("snps_polarized_biallelic_215.lfmm")
+write.geno(t(snps.geno),"allChr.recode.HAPLO.NEW.allindiv.geno")
 
 # reformat data
 print("reformat data")
 snps.lfmm <- t(snps.geno) ; rm(snps.geno)
-snps.lfmm <- merge(snps.lfmm,all_ind,by.x="row.names",by.y="Id",sort=F)
+snps.lfmm <- merge(snps.lfmm,indiv_subset,by.x="row.names",by.y="Id",sort=F)
 row.names(snps.lfmm) <- snps.lfmm$Row.names ; snps.lfmm$Row.names<-NULL
 snps.lfmm.mat <- as.matrix(snps.lfmm[,-length(snps.lfmm)])
 
 # Retaining only polymorphic loci over the set of 215 genotypes
 print("filtering monomorphic loci over the whole dataset")
 lst <- which(lapply(apply(snps.lfmm.mat[,],2,function(x){x=x[x!=9] ; unique(x)}),length)!=1) #List polymorphic loci
-sfs <- apply(snps.lfmm.mat[,lst],2,daf4)
+sfs <- apply(snps.lfmm.mat[,lst],2,daf.count)
 print("save list of polymorphic loci")
-write.table(names(lst),"/data2/projects/africrop_models/polarized_snps_mil/results_b/snps.poly_CORRECTED.txt")
+write.table(names(lst),"listSNPs_recode.HAPLO.NEW.indivsubset.poly.txt")
 
 # Calculating SFS on cultivated genotypes
 print("calculating cultivated genotypes SFS")
-lst.cult <- which(row.names(snps.lfmm.mat) %in% as.character(all_ind[-grep(all_ind[,2],pattern = "wild"),]$Id))
+lst.cult <- which(row.names(snps.lfmm.mat) %in% as.character(indiv_subset[-grep(indiv_subset[,2],pattern = "barth"),]$Id))
 lst.cult.poly <- which(lapply(apply(snps.lfmm.mat[lst.cult,],2,function(x){x=x[x!=9] ; unique(x)}),length)!=1) #List polymorphic loci
-sfs.cult.poly <- sfs.daf4(snps.lfmm.mat[lst.cult,lst.cult.poly]) # Calculating SFS with a sub_sampling approach
+sfs.cult.poly <- sfs.daf.count(snps.lfmm.mat[lst.cult,lst.cult.poly]) # Calculating SFS with a sub_sampling approach
 print("save SFS for cultivated genotypes")
-write.table(as.data.frame(table(sfs.cult.poly)),"/data2/projects/africrop_models/polarized_snps_mil/results_b/sfs.cult_CORRECTED.poly",quote = FALSE)
+write.table(as.data.frame(table(sfs.cult.poly)),"allChr.recode.HAPLO.NEW.sfs.glab.poly",quote = FALSE)
 
 # Calculating group-specific SFS
 print("calculating pop specifc SFSs")
-pop.size <- by(snps.lfmm$Pop,snps.lfmm$Pop,function(x){as.integer(0.75*length(x))})
-write.table(rbind(pop.size),"/data2/projects/africrop_models/polarized_snps_mil/results_b/pop.size_CORRECTED.txt")
-sfs.bypop <- by(snps.lfmm.mat[,lst],snps.lfmm$Pop,FUN = sfs.daf4)
+pop.size <- by(snps.lfmm$Species,snps.lfmm$Species,function(x){length(x)})
+write.table(rbind(pop.size),"allChr.recode.HAPLO.NEW.pop.size_CORRECTED.txt")
+sfs.bypop <- by(snps.lfmm.mat[,lst],snps.lfmm$Species,FUN = sfs.daf.count)
 id <- names(sfs.bypop)
-save(sfs.bypop,file="/data2/projects/africrop_models/polarized_snps_mil/results_b/sfs.bypop_Rformat_CORRECTED")
+save(sfs.bypop,file="allChr.recode.HAPLO.NEW.sfs.bypop_Rformat_CORRECTED")
 
 # Transforming in a matrix format
 print("transform SFS by pop in a matrix form more convenient to use")
@@ -103,14 +105,7 @@ sfs.bypop.b <- NULL
 for(i in 1:length(sfs.bypop)){ sfs.bypop.b <- cbind(sfs.bypop.b,sfs.bypop[[i]])}
 colnames(sfs.bypop.b) <- id
 print("saving non filtered pop specific SFSs")
-write(sfs.bypop.b,"/data2/projects/africrop_models/polarized_snps_mil/results_b/sfs.bypop_CORRECTED")
-
-# Identifying monomorphic SNPs over the whole dataset and filtering them
-lst <- which(apply(sfs.bypop.b,1,sum) == 0 |apply(sfs.bypop.b,1,sum) == 215 )
-sfs.bypop.b <- sfs.bypop.b[-lst,]
-print("saving monomorphic filtered pop specific SFSs")
-write.table(sfs.bypop.b,"/data2/projects/africrop_models/polarized_snps_mil/results_b/sfs.bypop.poly_only_CORRECTED.txt")
-
+write.table(sfs.bypop.b,"allChr.recode.HAPLO.NEW.sfs.bypop_CORRECTED")
 
 # Generate pairwise 2D-SFS
 print("generating SFS-2D")
@@ -122,7 +117,7 @@ row.names(toto) <- paste("d",i-1,"_",row.names(toto),sep="")
 
 # Write 2D SFS to a file
 print("saving SFS-2D")
-conn <- file(paste("/data2/projects/africrop_models/polarized_snps_mil/results_b/Mil_jointDAFpop_CORRECTED",(j-1),"_",(i-1),".obs",sep=""),"w")
+conn <- file(paste("allChr.recode.HAPLO.NEW._jointDAFpop_CORRECTED",(j-1),"_",(i-1),".obs",sep=""),"w")
 cat("1 observations\n",file=conn)
 cat("\t",file=conn)
 write.table(toto,conn,quote = F,sep = "\t")
@@ -133,6 +128,7 @@ print("plotting SFS-2D")
 
   sfs2d.b <- melt(toto)
   names(sfs2d.b) <- c(names(pop.size[i]),names(pop.size[j]),"value")
+  write.table(sfs2d.b,"sfs2d.all.txt")
 
 sfs2d.plot <- ggplot(sfs2d.b, aes(sfs2d.b[,1],sfs2d.b[,2])) +
   geom_tile(aes(fill = log(value)), colour = "white") +
@@ -178,7 +174,7 @@ g.sfs2d.plot$widths[2:3] <- maxWidth
 g.hist2$widths[2:3] <- maxWidth
 g.hist1$widths[2:3] <- maxWidth
 
-pdf(file = paste("/data2/projects/africrop_models/polarized_snps_mil/results_b/Mil_jointDAFpop_",names(pop.size[j]),"_",names(pop.size[i]),"-with0_CORRECTED.pdf",sep=""))
+pdf(file = paste("allChr.recode.HAPLO.NEW._jointDAFpop_",names(pop.size[j]),"_",names(pop.size[i]),"-with0_CORRECTED.pdf",sep=""))
 print(plot_grid(g.hist1,g.p4,g.sfs2d.plot,g.hist2,ncol=2,align="hv",rel_widths = c(3,1),rel_heights = c(1,3)))
 dev.off()
 
@@ -227,20 +223,9 @@ g.hist2$widths[2:3] <- maxWidth
 g.hist1$widths[2:3] <- maxWidth
 p <- plot_grid(g.hist1,g.p4,g.sfs2d.plot,g.hist2,ncol=2,align="hv",rel_widths = c(3,1),rel_heights = c(1,3))
 
-pdf(file = paste("/data2/projects/africrop_models/polarized_snps_mil/results_b/Mil_jointDAFpop_",names(pop.size[i]),"_",names(pop.size[j]),"-without0_CORRECTED.pdf",sep=""),width =15,height=10)
+pdf(file = paste("allChr.recode.HAPLO.NEW._jointDAFpop_",names(pop.size[i]),"_",names(pop.size[j]),"-without0_CORRECTED.pdf",sep=""),width =15,height=10)
 print(p)
 dev.off()
 
   }
 }
-
-# Test for fastsimcoal : calculating SFS2D for cultivated and wild center
-test <- (table(factor(sfs.bypop.n$cult_c,levels = c(0:66)),factor(sfs.bypop.n$wild_c,levels=c(0:9))))
-colnames(test) <- paste("d0_",colnames(test),sep="")
-row.names(test) <- paste("d1_",row.names(test),sep="")
-test
-conn <- file("/data2/projects/africrop_models/polarized_snps_mil/results_b/Mil_test_Wildc_Cultc_jointDAFpop1_0_CORRECTED.obs","w")
-cat("1 observations\n",file=conn)
-cat("\t",file=conn)
-write.table(test,conn,quote = F,sep = "\t")
-close(conn)
