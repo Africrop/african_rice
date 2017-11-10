@@ -72,7 +72,7 @@ write.table(names(lst),"listSNPs_recode.HAPLO.NEW.Mcswan.poly.txt")
 
 # Calculating SFS on cultivated genotypes
 print("calculating cultivated genotypes SFS")
-lst.cult <- which(row.names(snps.lfmm.mat) %in% as.character(indiv_subset[-grep(indiv[,2],pattern = "barth"),]$Id))
+lst.cult <- which(row.names(snps.lfmm.mat) %in% as.character(indiv[-grep(indiv[,2],pattern = "barth"),]$Id))
 lst.cult.poly <- which(lapply(apply(snps.lfmm.mat[lst.cult,],2,function(x){x=x[x!=9] ; unique(x)}),length)!=1) #List polymorphic loci
 sfs.cult.poly <- sfs.daf.count(snps.lfmm.mat[lst.cult,lst.cult.poly]) # Calculating SFS with a sub_sampling approach
 print("save SFS for cultivated genotypes")
