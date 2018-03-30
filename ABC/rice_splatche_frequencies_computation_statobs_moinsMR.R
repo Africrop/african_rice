@@ -48,8 +48,8 @@ miss.freq = function(x){
 # Function for binning SFS, CAUTION : written for african rice cultivated genotypes data
 histo.bin = function(x){
   n = length(x)
-  y = sapply(1:66, FUN = function(i) sum(x == i) )
-  c(y[1], y[2], y[3], sum(y[4:5]), sum(y[6:10]), sum(y[11:20]), sum(y[20:66]) )/n
+  y = sapply(1:56, FUN = function(i) sum(x == i) )
+  c(y[1], y[2], y[3], sum(y[4:5]), sum(y[6:10]), sum(y[11:20]), sum(y[20:56]) )/n
 }
 
 #

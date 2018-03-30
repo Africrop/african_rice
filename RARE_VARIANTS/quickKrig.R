@@ -1,31 +1,3 @@
-###################################################################################################################################
-#
-# Copyright 2017 IRD
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, see <http://www.gnu.org/licenses/> or
-# write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston,
-# MA 02110-1301, USA.
-#
-# You should have received a copy of the CeCILL-C license with this program.
-#If not see <http://www.cecill.info/licences/Licence_CeCILL-C_V1-en.txt>
-#
-# Intellectual property belongs to IRD and Grenoble-Alpes University
-#
-# Written by Olivier François, Philippe Cubry
-#
-###################################################################################################################################
 
 ###############################
 ## R script for kriging
@@ -106,6 +78,7 @@ quickKrig = function(
   mapadd=T,
   pts.size = .4,
   pts.shape = 19,
+  theta=10,
   ...
 ){
   
@@ -128,7 +101,7 @@ quickKrig = function(
   }
   
   # Make Krigging
-  fit = Krig(coordinates,cluster,m = 1,theta = 10)
+  fit = Krig(coordinates,cluster,m = 1,theta = theta)
 
   if(is.null(grid)){
   surface(fit, col = colpalette, levels = c(-1), extrap = T,...)
@@ -157,6 +130,7 @@ quickKrig2 = function(
   mapadd=T,
   pts.size = .4,
   pts.shape = 19,
+  theta=10,
   ...
 ){
   
@@ -179,7 +153,7 @@ quickKrig2 = function(
   }
   
   # Make Krigging
-  fit = Krig(coordinates,cluster,m = 1,theta = 10)
+  fit = Krig(coordinates,cluster,m = 1,theta = theta)
   
   if(is.null(grid)){
     surface(fit, col = colpalette, levels = c(-1), extrap = T,...)
@@ -192,6 +166,58 @@ quickKrig2 = function(
     if (class(constraints)!= "NULL") { out[[8]][ !constraints ] = NA }
     ncolors=length(colpalette)
     plot(raster(out),col=colpalette,...)
+    points(coordinates,pch=pts.shape, cex=pts.size)
+  }
+}
+
+# Define tessplot function
+quickKrig3 = function( 
+  coordinates = mydata.coord, 
+  data_to_Krig = outfile.txt,
+  datacolumn = 1,
+  asciifile = NULL,
+  cell_value_min = NULL,
+  cell_value_max = NULL,
+  colpalette = colrp,
+  mapadd=T,
+  pts.size = .4,
+  pts.shape = 19,
+  theta=10,
+  ...
+){
+  
+  
+  # read spatial coordinates from the tess input file  
+  coordinates = coordinates
+  
+  # read admixture (tess or clummp output)
+  cluster = data_to_Krig[, datacolumn]
+  
+  # Create a grid on which the data will be evaluated
+  if(is.null(asciifile)==FALSE){
+    grid <- createGridFromAsciiRaster(asciifile)
+  } else {grid <- NULL}
+  
+  # Get constraints for prediction
+  constraints <- NULL
+  if(is.null(cell_value_min)==FALSE |is.null(cell_value_max)==FALSE ){
+    constraints <- getConstraintsFromAsciiRaster(asciifile,cell_value_min,cell_value_max)
+  }
+  
+  # Make Krigging
+  fit = Krig(coordinates,cluster,m = 1,theta = theta)
+  
+  if(is.null(grid)){
+    surface(fit, col = colpalette, levels = c(-1), extrap = T,...)
+    points(coordinates, cex = pts.size, pch = pts.shape)
+    if(mapadd) {map(add=T, interior = F, lwd = 1)}
+  } else {
+    look<- predict(fit,grid) # evaluate on a grid of points
+    out<- as.surface( grid, look)
+    
+    if (class(constraints)!= "NULL") { out[[8]][ !constraints ] = NA }
+    ncolors=length(colpalette)
+    image(raster(out),col=colpalette,...)
     points(coordinates,pch=pts.shape, cex=pts.size)
   }
 }
