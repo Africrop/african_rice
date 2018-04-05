@@ -28,10 +28,10 @@
 ###################################################################################################################################
 
 # Load simulations from ABC retained ones after empirical data test
-load("./Riz_analysis/splatche/nn10pop")
+load("./ABC/nn10pop")
 
 # Load group definition
-groups <- read.table("./scripts/african_rice/ABC/og_groups_final.txt",na.strings = "NA.")
+groups <- read.table("./ABC/og_groups_final.txt",na.strings = "NA.")
 groups <- groups[groups$V1!="MR",]
 
 # Randomly attribute 2000 singletons to 111 genotypes
